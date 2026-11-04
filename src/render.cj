@@ -179,7 +179,9 @@ func drawBrandIcon(art: Art,x: Float32,y: Float32,size: Float32): Unit {
     art.image("assets/branding/icon.svg",Rect(x,y,size,size),source: Some(Rect(0.0,200.0,1054.0,1054.0)))
 }
 func libraryMenuRect(): Rect { Rect(1130.0,22.0,116.0,36.0) }
-func resultActionRect(retry: Bool): Rect { Rect(if (retry) { 1108.0 } else { 16.0 },665.0,156.0,36.0) }
+func resultActionRect(retry: Bool): Rect { Rect(if (retry) { 1108.0 } else { 936.0 },665.0,156.0,36.0) }
+func resultAchievementRect(): Rect { Rect(744.0,540.0,520.0,64.0) }
+func resultNoticeRect(): Rect { Rect(936.0,616.0,328.0,32.0) }
 func header(a: App,r: Renderer,art: Art): Unit {
     drawBrandIcon(art,32.0,22.0,36.0)
     text(r,"orz!mania",78.0,22.0,28.0)
@@ -279,6 +281,7 @@ func drawLibrary(a: App,r: Renderer,art: Art): Unit {
     text(r,c.artist + "  /  " + c.creator,64.0,436.0,16.0,color: MUTED)
     r.popClip()
     text(r,"${c.keys}K   ·   ${timeLabel(c.duration)}",64.0,475.0,13.0,color: PINK)
+    drawLocalScores(a,r)
     text(r,tr(a,"曲库"),454.0,105.0,13.0,color: MUTED)
     text(r,if (a.english) { "${a.groups.size} songs / ${a.charts.size} charts" } else { "${a.groups.size} 首 / ${a.charts.size} 谱面" },1062.0,105.0,13.0,color: MUTED)
     r.pushClip(Rect(426.0,144.0,822.0,432.0))
@@ -326,13 +329,16 @@ func drawSongProgress(r: Renderer,value: Float32,cx!: Float32=1084.0,cy!: Float3
     }
     r.strokeCircle(cx,cy,14.0,Pen(color: WHITE.withAlpha(220),width: 1.2))
 }
+func visualNoteTime(a: App): Int64 { a.now+a.visualOffset }
 func drawPlay(a: App,p: Play,r: Renderer,art: Art): Unit {
+    let visualNow=visualNoteTime(a)
     let c=p.chart
     let width=min(Float32(696.0),Float32(c.keys)*104.0)
     let centre: Float32=535.0; let left=centre-width/2.0; let lane=width/Float32(c.keys)
     let hitY: Float32=667.0; let diameter=lane-6.0
     r.fill(Rect(left,0.0,width,720.0),Color.rgba(0,0,0,192))
     r.fill(Rect(left+width+8.0,300.0,6.0,420.0),Color.rgb(245,245,248))
+    drawLiveScores(a,p,r)
     // Character art from the same stage texture as the reference skin.
     let characterWidth=min(Float32(135.0),left-55.0)
     art.image("assets/skin/mania/stage/stageleft.png",
@@ -354,13 +360,13 @@ func drawPlay(a: App,p: Play,r: Renderer,art: Art): Unit {
     r.pushClip(Rect(left,0.0,width,720.0))
     for (i in p.cursor..c.notes.size) {
         let n=c.notes[i]
-        let y=hitY-Float32(n.time-a.now)*a.speed
+        let y=hitY-Float32(n.time-visualNow)*a.speed
         if (y < -diameter) { break }
         if (n.state == 2) { continue }
         let x=left+Float32(n.lane)*lane+3.0
         let cy: Float32=if (n.state == 1) { hitY } else { y }
         if (n.end > n.time) {
-            let tail=hitY-Float32(n.end-a.now)*a.speed
+            let tail=hitY-Float32(n.end-visualNow)*a.speed
             let top=max(-diameter,tail)
             let bodyWidth=diameter*0.75
             if (cy > top) {
@@ -387,12 +393,7 @@ func drawPlay(a: App,p: Play,r: Renderer,art: Art): Unit {
         skinNumber(art,"${(c.notes[0].time-a.now)/1000+1}",centre,342.0,43.0,combo: true,align: 1)
     }
     if (a.canSkipIntro()) { text(r,tr(a,if (a.skipError.isEmpty()) { "Enter 跳过前奏" } else { a.skipError }),centre-54.0,397.0,13.0,color: WHITE.withAlpha(150)) }
-    text(r,"${c.keys}K   ·   ${timeLabel(a.now)} / ${timeLabel(c.duration)}",1060.0,669.0,13.0,color: WHITE.withAlpha(185))
     drawKeyOverlay(a,p,r)
-    // The slim lower-right timing strip uses actual recent input offsets.
-    r.fill(Rect(1012.0,702.0,180.0,2.0),WHITE.withAlpha(50))
-    r.fill(Rect(1102.0,697.0,1.0,12.0),PINK)
-    for (e in p.offsets) { r.fill(Rect(1102.0+Float32(e)*0.45,699.0,2.0,8.0),PINK.withAlpha(160)) }
 }
 func drawResults(a: App,p: Play,r: Renderer,art: Art): Unit {
     r.fill(Rect(0.0,0.0,1280.0,89.0),Color.rgba(0,0,0,185))
@@ -432,12 +433,14 @@ func drawResults(a: App,p: Play,r: Renderer,art: Art): Unit {
         }
     }
     if (p.judged == p.chart.notes.size && p.counts[5] == 0 && p.maxCombo == p.chart.notes.size) {
-        art.image("assets/skin/ranking-perfect@2x.png",Rect(92.0,626.0,536.0,66.0))
+        art.image("assets/skin/ranking-perfect@2x.png",resultAchievementRect())
     }
     for (retry in [false,true]) {
         let rect=resultActionRect(retry)
-        menuButton(a,r,if (retry) { "再次挑战" } else { "返回" },rect.x,rect.y,rect.w,rect.h)
+        r.fill(rect,Color.rgba(38,32,47,120))
+        centeredText(r,tr(a,if (retry) { "再次挑战" } else { "返回" }),rect,16.0,WHITE)
     }
+    drawScoreNotice(a,r)
 }
 func draw(a: App,r: Renderer,art: Art): Unit {
     // Paint the entire native output before fitting the gameplay/UI canvas. This
@@ -447,7 +450,8 @@ func draw(a: App,r: Renderer,art: Art): Unit {
     let bounds=r.viewport()
     background(a,r,art,bounds)
     let _=r.fitCanvas(1280.0,720.0)
-    if (a.screen == 0) { drawLibrary(a,r,art) }
+    if (a.calibration.isSome()) { () }
+    else if (a.screen == 0) { drawLibrary(a,r,art) }
     else if (let Some(p) <- a.play) {
         if (a.screen == 3) { drawResults(a,p,r,art) }
         else { drawPlay(a,p,r,art) }

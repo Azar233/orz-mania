@@ -39,6 +39,7 @@
 - **按需加载**：只绘制可见条目，图片缓存有界，音乐使用压缩播放。
 - **异步处理**：图片与试听加载避开绘制线程，复用素材和绘制缓冲。
 - **自由调节**：滚速、判定偏移、帧率、VSync、高 DPI 与中英文切换。
+- **本地成绩**：按谱面保存最佳20条手动完赛记录，选曲查看历史榜，游玩时实时比较排名。
 
 ## 运行
 
@@ -64,10 +65,13 @@ cjpm run
 | D F J K | 默认 4K 按键，可重新绑定 |
 | Enter（长前奏期间） | 跳至首个音符前约两秒 |
 | Esc（游玩中） | 暂停；再次按 Esc 继续 |
+| Tab（游玩中） | 隐藏 / 显示本地排行；游戏按键绑定优先 |
 | Retry / Quit（暂停中） | 重新开始 / 返回选曲 |
 | I / O（选曲中） | 导入文件夹 / 谱面文件 |
 
 ![当前暂停界面：皮肤 Retry 与 Quit](docs/media/pause.png)
+
+成绩保存在本地 `data/local-scores-v1.tsv`，不随 Git 上传。按分数、准确率、最大连击排序；自动演示与中途退出不入榜，鼠标移到选曲页成绩区域可滚动查看。
 
 ## 判定与计分
 
@@ -92,6 +96,8 @@ cjpm run
 
 **基本设置**：200–2500 px/s 滚速、±300ms 判定偏移、音量、自动演示与语言。
 
+**偏移校准**：设置 → 校准，跟随鼓点音押调整判定偏移，或跟随下落标记目押调整视觉偏移。至少 8 次有效输入后给出稳定建议，点击应用保存；两种偏移独立，均支持 ±300ms 范围与 5ms 微调。
+
 ![当前设置页：统一参数布局、语言切换](docs/media/settings.png)
 
 **按键绑定**：1K–9K 独立配置，点击键帽录入，Esc 取消。
@@ -110,6 +116,8 @@ cjpm run
 powershell -ExecutionPolicy Bypass -File tools/build.ps1 -Verify
 powershell -ExecutionPolicy Bypass -File tools/verify-import.ps1
 ./target/release/bin/main.exe --ui-check
+./target/release/bin/main.exe --score-check
+./target/release/bin/main.exe --calibration-check
 ./target/release/bin/main.exe --scroll-check current
 ```
 

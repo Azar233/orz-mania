@@ -105,11 +105,18 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,640.0,478.0))
         require(a.screen == 0 && !a.menuOpen,"Skin Quit returns to library")
         a.screen=3
+        let back=resultActionRect(false); let retry=resultActionRect(true)
+        require(back.x > 628.0 && back.x+back.w+16.0 == retry.x && retry.x+retry.w <= 1280.0 && back.y == retry.y,"Results actions stay together on the right, clear of the score graph and full-combo art")
+        let achievement=resultAchievementRect(); let notice=resultNoticeRect()
+        require(achievement.x > 560.0 && achievement.y+achievement.h <= notice.y && notice.y+notice.h < back.y,"Achievement, rank notice and buttons occupy separate regions clear of recent hit timing")
+        require(notice.x == back.x && notice.x+notice.w == retry.x+retry.w,"Rank notice aligns with the full action group")
         let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,40.0,690.0))
-        require(a.screen == 0,"Unified results Back button")
+        require(a.screen == 3,"Old results button position is no longer clickable")
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,back.x+back.w/2.0,back.y+back.h/2.0))
+        require(a.screen == 0,"Results Back button uses its relocated hit box")
         a.screen=3
-        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,1160.0,685.0))
-        require(a.screen == 1,"Unified results Retry button")
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,retry.x+retry.w/2.0,retry.y+retry.h/2.0))
+        require(a.screen == 1,"Results Retry button uses its drawn hit box")
         a.back(); a.menuOpen=true
         require(!handle(a,w,UiEvent.MouseDown(MouseButton.Left,965.0,558.0)),"Quit game button retains its hit box")
         require(art.errors == 0,"UI resources load without errors")

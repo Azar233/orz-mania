@@ -19,6 +19,7 @@
 # Personal songs, local databases and preferences are never published.
 /Songs/
 /settings.cfg
+/data/
 *.osz
 *.db
 *.tsv

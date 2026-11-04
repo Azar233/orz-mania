@@ -20,6 +20,16 @@ class App {
     var drawerFade: Float32=1.0
     var screen: Int64=0 // 0 library, 1 playing, 2 paused, 3 results
     var play: ?Play=None
+    var localScores=LocalScores()
+    var liveRanking: ?LiveRanking=None
+    var showRanking=true
+    var rankingHintStart: Int64=0
+    var rankedRun=false
+    var completionHandled=false
+    var scoreSaved=false
+    var scorePage: Int64=0
+    var scoreWheel: Float32=0.0
+    var scoreChart=""
     var now: Int64 = -2000
     var leadStart: Int64=0
     var pauseTick: Int64=0
@@ -27,6 +37,8 @@ class App {
     var endPosition: Int64=0
     var speed: Float32=0.55
     var offset: Int64=0
+    var visualOffset: Int64=0
+    var calibration: ?OffsetCalibration=None
     var framePreset: Int64=0
     var customFPS: Int64=240
     var vsync=false
@@ -66,9 +78,13 @@ class App {
     init(music: Music) { this.music=music; loadSettings(this); rebuildLibrary(this) }
     func start(ticks: Int64): Unit {
         if (charts.isEmpty()) { return }
+        closeCalibration(this,resume: false)
         previewSong=""
         music.open(charts[selected].audio)
         play=Some(Play(charts[selected])); screen=1; now = -2000; menuOpen=false; menuDrag = -1
+        liveRanking=Some(LiveRanking(localScores.forChart(charts[selected].scoreKey)))
+        rankedRun = !autoplay; completionHandled=false; scoreSaved=false
+        rankingHintStart=ticks
         leadStart=ticks; endedAt = -1; skipError=""; lastClickChart = -1
     }
     func canSkipIntro(): Bool {
@@ -120,7 +136,7 @@ class App {
         screen=1; menuOpen=false; menuDrag = -1
     }
     func preview(async!: Bool=false): Unit {
-        if (screen != 0 || charts.isEmpty()) { return }
+        if (screen != 0 || charts.isEmpty() || calibration.isSome()) { return }
         let chart=charts[selected]; let song=chart.artist+"\n"+chart.title
         if (previewSong == song) { music.discardPreview(); return }
         try {
@@ -129,10 +145,16 @@ class App {
             music.play(loop: true); previewSong=song
         } catch (ex: Exception) { previewSong=song; message=ex.message; println("Preview: ${ex.message}") }
     }
-    func back(): Unit { previewSong=""; music.stop(); screen=0; play=None; menuOpen=false; menuDrag = -1 }
+    func back(): Unit { closeCalibration(this,resume: false); previewSong=""; music.stop(); screen=0; play=None; liveRanking=None; menuOpen=false; menuDrag = -1 }
+    func finish(p: Play): Unit {
+        if (completionHandled) { return }
+        completionHandled=true; scoreSaved=false
+        if (rankedRun && !autoplay && !p.assisted && p.judged == p.chart.notes.size) { scoreSaved=localScores.record(p); scorePage=0 }
+    }
     func tick(ticks: Int64): Unit {
         let dt=if (uiTick == 0) { Float32(0.0) } else { min(Float32(0.05),Float32(max(0,ticks-uiTick))/1000.0) }
         uiTick=ticks
+        if (let Some(guide) <- calibration) { guide.tick(); return }
         if (screen == 0) { animateLibrary(this,dt) }
         if (let Some(d) <- dialog) {
             if (d.isDone()) {
@@ -161,8 +183,9 @@ class App {
             }
         }
         if (let Some(p) <- play) {
+            rankedRun=rankedRun && !autoplay
             p.update(now,autoplay)
-            if (now > p.chart.duration+1800) { screen=3; music.stop() }
+            if (now > p.chart.duration+1800) { screen=3; music.stop(); finish(p) }
         }
     }
 }
@@ -175,7 +198,7 @@ func handle(a: App, w: SdlWindow, event: UiEvent): Bool {
     let ticks=Int64(w.ticks())
     match (event) {
         case UiEvent.Quit | UiEvent.WindowCloseRequested => return false
-        case UiEvent.WindowFocusLost => a.pause(ticks); return true
+        case UiEvent.WindowFocusLost => if (let Some(g) <- a.calibration) { g.stop() }; a.pause(ticks); return true
         case _ => ()
     }
     if (a.menuOpen) { return handleMenu(a,w,event) }
@@ -185,8 +208,16 @@ func handle(a: App, w: SdlWindow, event: UiEvent): Bool {
         case UiEvent.DropFile(path, _, _) => if (a.screen == 0) { a.importPath(path) }
         case UiEvent.KeyUp(key) => if (a.screen == 1 && !a.autoplay) { if (let Some(p) <- a.play) { p.release(laneOf(a,p,key),a.now) } }
         case UiEvent.MouseMove(x,y) => if (a.screen == 0) { a.libraryHover=libraryHit(a,x,y) }
-        case UiEvent.MouseWheel(_, y, _, _) =>
+        case UiEvent.MouseWheel(_, y, x, pointerY) =>
             if (a.screen == 0 && !a.charts.isEmpty()) {
+                if (inRect(x,pointerY,localScoreRect())) {
+                    syncScorePanel(a)
+                    let size=a.localScores.forChart(a.charts[a.selected].scoreKey).size
+                    a.scoreWheel+=y
+                    let steps=Int64(a.scoreWheel); a.scoreWheel-=Float32(steps)
+                    a.scorePage=max(0,min(max(0,size-4),a.scorePage-steps))
+                    return true
+                }
                 a.wheelRemainder+=y
                 let steps=Int64(a.wheelRemainder)
                 selectLibraryRow(a,a.libraryRow-steps)
@@ -226,6 +257,7 @@ func handle(a: App, w: SdlWindow, event: UiEvent): Bool {
             } }
             match (key) {
                 case Key.Escape => openMenu(a,ticks)
+                case Key.Tab => if (a.screen == 1) { a.showRanking = !a.showRanking }
                 case Key.Enter =>
                     if (a.screen == 2) { a.resume(ticks) }
                     else if (a.screen == 0 && !a.rows.isEmpty() && a.rows[a.libraryRow].chart < 0) { toggleSongDrawer(a,a.libraryRow) }
@@ -275,6 +307,8 @@ main(args: Array<String>): Int64 {
                     if (args.size > 0 && args[0] == "--readme-capture") { captureReadmeShowcase(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--readme-media") { captureReadmeMedia(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--ui-check") { verifyUiLogic(a,w,art); return 0 }
+                    if (args.size > 0 && args[0] == "--calibration-check") { verifyCalibration(a,w); return 0 }
+                    if (args.size > 0 && args[0] == "--score-check") { verifyLocalScoreboard(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--scroll-check") { scrollCheck(a,w,art,args); return 0 }
                     if (capture) { screenshots(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--motion-check") { motionCheck(a,w,art); return 0 }
@@ -296,7 +330,7 @@ main(args: Array<String>): Int64 {
                         w.renderer.present(); frames.finish(a,frameStart)
                     }
                     saveSettings(a)
-                }
+                } finally { closeCalibration(a,resume: false) }
             }
         }
         return 0

@@ -24,6 +24,7 @@ class Note {
     init(lane: Int64, time: Int64, end: Int64) { this.lane=lane; this.time=time; this.end=end }
 }
 class Chart {
+    var scoreKey=""
     var path = ""
     var title = "Untitled"
     var artist = "Unknown"
@@ -99,7 +100,9 @@ func parseChart(text: String, path: String): Chart {
 }
 func loadChart(path: String): Chart {
     let bytes=File.readFrom(path); require(bytes.size <= 16000000, "Beatmap exceeds 16 MB")
-    parseChart(String.fromUtf8(bytes),path)
+    let chart=parseChart(String.fromUtf8(bytes),path)
+    chart.scoreKey=chartScoreKey(bytes)
+    chart
 }
 func loadCatalog(): ArrayList<Chart> {
     let charts=ArrayList<Chart>()
@@ -128,6 +131,7 @@ func bindings(keys: Int64): Array<Int64> {
     }
 }
 class Play {
+    var assisted=false
     let keyOverlay=KeyOverlay()
     let chart: Chart
     var combo: Int64 = 0
@@ -195,6 +199,7 @@ class Play {
         }
     }
     func update(now: Int64, autoplay: Bool): Unit {
+        if (autoplay) { assisted=true }
         for (i in cursor..chart.notes.size) {
             let n=chart.notes[i]
             if (n.time > now+window()) { break }

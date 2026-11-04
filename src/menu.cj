@@ -42,8 +42,12 @@ func loadSettings(a: App): Unit {
             } catch (_: Exception) { preset=0; custom=240; sync=false; stats=false }
         }
         a.framePreset=preset; a.customFPS=custom; a.vsync=sync; a.showFPS=stats
-        a.english=false
+        a.english=false; a.visualOffset=0
         for (row in rows) {
+            if (row.trimAscii().startsWith("visualOffset=")) {
+                try { let value=Int64.parse(row.trimAscii().replace("visualOffset=","")); require(value >= -300 && value <= 300,"Visual offset out of range"); a.visualOffset=value }
+                catch (_: Exception) { a.visualOffset=0 }
+            }
             if (row.trimAscii().startsWith("language=")) { a.english=row.trimAscii() == "language=en" }
         }
         a.speed=Float32(speed); a.offset=offset; a.music.setVolume(Float32(volume)); a.keymaps=keymaps
@@ -57,6 +61,7 @@ func saveSettings(a: App): Unit {
         }
         value+="display=${a.framePreset},${a.customFPS},${if (a.vsync) { 1 } else { 0 }},${if (a.showFPS) { 1 } else { 0 }}\n"
         value+="language=${if (a.english) { "en" } else { "zh" }}\n"
+        value+="visualOffset=${a.visualOffset}\n"
         File.writeTo("settings.cfg",value.toArray())
     } catch (ex: Exception) { a.message="无法保存设置："+ex.message; println(a.message) }
 }
@@ -140,6 +145,7 @@ func handlePause(a: App,w: SdlWindow,event: UiEvent): Bool {
 }
 func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
     if (a.screen == 2) { return handlePause(a,w,event) }
+    if (a.calibration.isSome()) { return handleCalibration(a,event) }
     if (a.displayEditing) { return handleDisplayEntry(a,event) }
     if (a.bindingCapture >= 0) {
         match (event) {
@@ -159,14 +165,15 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
                 case Key.Escape => closeMenu(a,ticks)
                 case Key.Tab => a.menuPage=(a.menuPage+1)%5; a.menuFocus=0; a.menuDrag = -1; a.bindingCapture = -1
                 case Key.Up => a.menuFocus=max(0,a.menuFocus-1)
-                case Key.Down => a.menuFocus=min(if (a.menuPage == 3) { a.bindingKeys-1 } else if (a.menuPage == 2) { 2 } else if (a.menuPage == 0) { 4 } else { 3 },a.menuFocus+1)
+                case Key.Down => a.menuFocus=min(if (a.menuPage == 3) { a.bindingKeys-1 } else if (a.menuPage == 2) { 2 } else if (a.menuPage == 0) { 5 } else { 3 },a.menuFocus+1)
                 case Key.Left => if (a.menuPage == 4) { changeDisplay(a,a.menuFocus,-1) } else if (a.menuPage == 0) { changeSetting(a,a.menuFocus,-1) } else if (a.menuPage == 3) { a.menuFocus=max(0,a.menuFocus-1) }
                 case Key.Right => if (a.menuPage == 4) { changeDisplay(a,a.menuFocus,1) } else if (a.menuPage == 0) { changeSetting(a,a.menuFocus,1) } else if (a.menuPage == 3) { a.menuFocus=min(a.bindingKeys-1,a.menuFocus+1) }
                 case Key.PageUp => if (a.menuPage == 0) { changeSetting(a,1,1) }
                 case Key.PageDown => if (a.menuPage == 0) { changeSetting(a,1,-1) }
                 case Key.Home => if (a.menuPage == 0 && a.menuFocus == 1) { a.offset=0 }
                 case Key.Enter =>
-                    if (a.menuPage == 4) { if (a.menuFocus == 1) { editCustomFPS(a) } else { changeDisplay(a,a.menuFocus,1) } }
+                    if (a.menuPage == 0 && (a.menuFocus == 1 || a.menuFocus == 5)) { openCalibration(a) }
+                    else if (a.menuPage == 4) { if (a.menuFocus == 1) { editCustomFPS(a) } else { changeDisplay(a,a.menuFocus,1) } }
                     else if (a.menuPage == 3) { a.bindingCapture=min(a.bindingKeys-1,a.menuFocus) }
                     else if (a.menuPage == 2) { libraryAction(a,w,a.menuFocus) }
                     else if (a.menuPage == 0 && a.menuFocus >= 3) { changeSetting(a,a.menuFocus,1) }
@@ -192,6 +199,7 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
                 if (inRect(x,y,settingValueRect(326.0))) { a.menuFocus=1; editCustomFPS(a) }
                 for (i in 0..2) { if (inRect(x,y,settingValueRect(410.0+Float32(i)*62.0))) { a.menuFocus=i+2; changeDisplay(a,i+2,1) } }
             } else if (a.menuPage == 0) {
+                if (inRect(x,y,calibrationEntryRect())) { a.menuFocus=5; openCalibration(a); return true }
                 for (i in 0..3) {
                     let cy=238.0+Float32(i)*82.0
                     if (inRect(x,y,488.0,cy-14.0,30.0,28.0)) { a.menuFocus=i; changeSetting(a,i,-1) }
@@ -227,9 +235,9 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
     }
     true
 }
-func menuButton(a: App,r: Renderer,label: String,x: Float32,y: Float32,w: Float32,h: Float32,active!: Bool=false): Unit {
+func menuButton(a: App,r: Renderer,label: String,x: Float32,y: Float32,w: Float32,h: Float32,active!: Bool=false,enabled!: Bool=true): Unit {
     box(r,x,y,w,h,if (active) { Color.rgb(72,42,65) } else { Color.rgb(38,32,47) },radius: 4.0)
-    centeredText(r,tr(a,label),Rect(x,y,w,h),16.0,if (active) { PINK } else { WHITE })
+    centeredText(r,tr(a,label),Rect(x,y,w,h),16.0,if (!enabled) { MUTED.withAlpha(100) } else if (active) { PINK } else { WHITE })
 }
 func drawMenu(a: App,r: Renderer,art: Art): Unit {
     if (a.screen == 2) {
@@ -237,6 +245,7 @@ func drawMenu(a: App,r: Renderer,art: Art): Unit {
         art.image("assets/skin/pause-back.png",pauseActionRect(false),alpha: if (a.menuFocus == 1) { 255 } else { 195 })
         return
     }
+    if (a.calibration.isSome()) { drawCalibration(a,r); return }
     box(r,226.0,116.0,828.0,476.0,Color.rgb(24,20,31),radius: 4.0)
     drawBrandIcon(art,254.0,134.0,30.0)
     text(r,"orz!mania",292.0,136.0,23.0)
@@ -262,6 +271,8 @@ func drawMenu(a: App,r: Renderer,art: Art): Unit {
             r.fill(Rect(524.0,cy-2.0,418.0*fractions[i],4.0),PINK)
             r.fillCircle(524.0+418.0*fractions[i],cy,7.0,PINK)
         }
+        let calibrationRect=calibrationEntryRect()
+        menuButton(a,r,"校准",calibrationRect.x,calibrationRect.y,calibrationRect.w,calibrationRect.h,active: a.menuFocus == 5)
         text(r,tr(a,"负值：谱面落后音乐；正值：谱面领先音乐。每步 5 ms。"),492.0,342.0,12.0,color: MUTED)
         centeredSettingLabel(a,r,"自动演示",444.0,a.menuFocus == 3)
         if (a.screen != 0) { text(r,tr(a,"在选曲界面切换"),650.0,452.0,12.0,color: MUTED) }
