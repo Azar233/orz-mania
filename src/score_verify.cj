@@ -11,7 +11,7 @@ func scoreTestPlay(error: Int64): Play {
     let play=Play(chart)
     play.press(0,1000+error); play.release(0,1000+error)
     play.press(1,1500+error); play.release(1,1500+error)
-    play.press(2,2000+error); play.update(3000,false)
+    play.press(2,2000+error); play.release(2,3000)
     require(play.judged == 3,"Score fixture must complete through manual input")
     play
 }
@@ -29,12 +29,27 @@ func verifyLocalScoreboard(a: App,w: SdlWindow,art: Art): Unit {
         let pending=Play(parseChart(SCORE_TEST_MAP,"Songs/test/map.osu")); pending.chart.scoreKey=key
         require(!store.record(pending) && !exists(path),"Incomplete runs must not be saved")
         require(store.record(lower) && store.record(best) && store.saves == 2,"Completed manual runs are persisted")
+        require(lower.accuracy() == 10000 && lower.score < 1000000,"Stored score is independent of accuracy")
+        let legacy=directory+"/legacy.tsv"
+        let legacyText="orz-mania-local-scores-v1\n"
+        File.writeTo(legacy,legacyText.toArray())
+        let oldRules=LocalScores(path: legacy)
+        require(!oldRules.writable && !oldRules.record(best) && String.fromUtf8(File.readFrom(legacy)) == legacyText,"Legacy rules cannot be mixed or overwritten")
         let loaded=LocalScores(path: path)
         require(loaded.writable && loaded.forChart(key).size == 2 && loaded.forChart(key)[0].score == 1000000,"Scores survive restart in descending order")
         require(loaded.forChart(key)[1].score == lower.score,"Lower result is retained as history")
         require(chartScoreKey(SCORE_TEST_MAP.toArray()) == key && chartScoreKey(SCORE_TEST_MAP.replace("OverallDifficulty:5","OverallDifficulty:6").toArray()) != key,"Chart content changes isolate records")
         File.writeTo(directory+"/a.osu",SCORE_TEST_MAP.toArray()); File.writeTo(directory+"/b.osu",SCORE_TEST_MAP.toArray())
         require(loadChart(directory+"/a.osu").scoreKey == loadChart(directory+"/b.osu").scoreKey,"Moving or reimporting identical content keeps its identity")
+        let difficulty=SCORE_TEST_MAP.replace("OverallDifficulty:5","OverallDifficulty:6")
+        File.writeTo(directory+"/other.osu",difficulty.toArray())
+        let other=loadChart(directory+"/other.osu"); let otherPlay=Play(other)
+        otherPlay.press(0,1000); otherPlay.release(0,1000)
+        otherPlay.press(1,1500); otherPlay.release(1,1500)
+        otherPlay.press(2,2000); otherPlay.release(2,3000)
+        require(store.forChart(other.scoreKey).isEmpty() && store.record(otherPlay),"Another difficulty in the same folder has an independent score board")
+        let reloaded=LocalScores(path: path)
+        require(reloaded.forChart(key).size == 2 && reloaded.forChart(other.scoreKey).size == 1,"Per-difficulty records remain separate after reload")
         let automatic=Play(parseChart(SCORE_TEST_MAP,"Songs/test/auto.osu")); automatic.chart.scoreKey=key
         automatic.update(4000,true)
         let baseline=String.fromUtf8(File.readFrom(path))
@@ -82,6 +97,14 @@ func verifyLocalScoreboard(a: App,w: SdlWindow,art: Art): Unit {
         a.selected=0; resetLibraryMotion(a)
         a.localScores.charts[a.charts[0].scoreKey]=store.forChart(key)
         a.scoreChart=""; syncScorePanel(a)
+        require(!showLocalScores(a),"Song header hides local scores")
+        let header=a.libraryRow
+        let _=handle(a,w,UiEvent.MouseWheel(0.0,-1.0,100.0,560.0))
+        require(a.libraryRow == min(a.rows.size-1,header+1),"Hidden score panel does not capture wheel input")
+        a.selected=0; syncLibrarySelection(a)
+        toggleSongDrawer(a,a.libraryRow)
+        selectLibraryRow(a,a.libraryRow+1)
+        require(showLocalScores(a),"Selected difficulty exposes its local scores")
         let beforeRow=a.libraryRow
         let _=handle(a,w,UiEvent.MouseWheel(0.0,-0.5,100.0,560.0))
         require(a.scorePage == 0,"Precision wheel accumulates inside the score panel")

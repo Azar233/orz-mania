@@ -246,7 +246,7 @@ func handle(a: App, w: SdlWindow, event: UiEvent): Bool {
             if (a.screen == 0) { a.libraryHover=libraryHit(a,x,y) }
         case UiEvent.MouseWheel(_, y, x, pointerY) =>
             if (a.screen == 0 && !a.charts.isEmpty()) {
-                if (inRect(x,pointerY,localScoreRect())) {
+                if (showLocalScores(a) && inRect(x,pointerY,localScoreRect())) {
                     syncScorePanel(a)
                     let size=a.localScores.forChart(a.charts[a.selected].scoreKey).size
                     a.scoreWheel+=y

@@ -122,6 +122,8 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,640.0,478.0))
         require(a.screen == 0 && !a.menuOpen,"Skin Quit returns to library")
         a.screen=3
+        let _=handle(a,w,esc)
+        require(a.screen == 3 && !a.menuOpen,"Results Escape stays on results without opening settings")
         let back=resultActionRect(false); let retry=resultActionRect(true)
         require(back.x > 628.0 && back.x+back.w+16.0 == retry.x && retry.x+retry.w <= 1280.0 && back.y == retry.y,"Results actions stay together on the right, clear of the score graph and full-combo art")
         let achievement=resultAchievementRect(); let notice=resultNoticeRect()
@@ -156,6 +158,7 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
 func verify(): Unit {
     verifyKeyOverlay()
     verifyAudioTimeline()
+    verifyScoring()
     let charts=loadCatalog() // Imported songs are optional; synthetic fixtures below always run.
     for (c in charts) {
         require(c.keys >= 1 && c.keys <= 9 && c.duration > 0,"Chart parse failed")
@@ -166,10 +169,10 @@ func verify(): Unit {
     }
     let data="osu file format v14\n[General]\nMode:3\nAudioFilename:a.mp3\n[Difficulty]\nCircleSize:4\nOverallDifficulty:5\n[HitObjects]\n0,0,1000,1,0\n511,0,2000,128,0,3000:0:0:0:\n"
     let c=parseChart(data,"Songs/test/map.osu"); require(c.notes[1].lane == 3,"Lane boundary")
-    let p=Play(c); p.press(0,1010); p.release(0,1010); p.press(3,2000); p.update(3000,false)
+    let p=Play(c); p.press(0,1010); p.release(0,1010); p.press(3,2000); p.release(3,3000)
     require(p.counts[0] == 2 && p.combo == 2,"Tap and hold scoring")
-    let early=Play(parseChart(data,"Songs/test/map.osu")); early.press(3,2000); early.release(3,2500)
-    require(early.counts[5] == 1,"Early hold release must miss")
+    let early=Play(parseChart(data,"Songs/test/map.osu")); early.press(3,2000); early.release(3,2500); early.update(3200,false)
+    require(early.counts[5] == 2 && early.chart.notes[1].state == 2,"Unplayed tap and unrecovered early hold release both expire as MISS")
     let miss=Play(parseChart(data,"Songs/test/map.osu")); miss.update(4000,false)
     require(miss.counts[5] == 2 && miss.combo == 0,"Miss expiry")
     let repeat=Play(parseChart(data,"Songs/test/map.osu")); repeat.press(0,1000); repeat.press(0,1000)
@@ -184,10 +187,10 @@ func verify(): Unit {
         let multi=parseChart(data.replace("CircleSize:4","CircleSize:${k}.0"),"Songs/test/map.osu")
         require(multi.keys == k && multi.notes[1].lane == k-1 && bindings(k).size == k,"1K-9K column mapping")
     }
-    require(p.grade(p.window()) == 4 && p.grade(p.window()+1) == 5,"Timing boundary")
+    require(p.grade(p.windows[4]) == 4 && p.grade(p.windows[4]+1) == 5,"Timing boundary")
     let holds=data.replace("0,0,1000,1,0", "0,0,1000,128,0,3000:0:").replace("511,0,2000,128,0,3000", "511,0,2000,128,0,4000")
     let chord=Play(parseChart(holds,"Songs/test/map.osu"))
-    chord.press(0,1030); chord.press(3,2000); chord.update(4100,false)
+    chord.press(0,1030); chord.press(3,2000); chord.release(0,3000); chord.release(3,4000)
     require(chord.counts[0] == 1 && chord.counts[1] == 1,"Independent hold head timing")
     println("PASS tap / hold / early release / miss / key repeat / mode / safe paths / 1K-9K / timing bounds / overlapping holds")
 }

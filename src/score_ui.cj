@@ -4,6 +4,9 @@ import sdl.*
 
 let LOCAL_RANK_LABELS=Array<String>(21,{i => "#${i+1}"})
 func localScoreRect(): Rect { Rect(62.0,505.0,338.0,194.0) }
+func showLocalScores(a: App): Bool {
+    a.screen == 0 && a.libraryRow >= 0 && a.libraryRow < a.rows.size && a.rows[a.libraryRow].chart >= 0
+}
 func syncScorePanel(a: App): Unit {
     if (a.charts.isEmpty()) { return }
     let key=a.charts[a.selected].scoreKey
@@ -12,6 +15,7 @@ func syncScorePanel(a: App): Unit {
     a.scorePage=max(0,min(max(0,count-4),a.scorePage))
 }
 func drawLocalScores(a: App,r: Renderer): Unit {
+    if (!showLocalScores(a)) { return }
     syncScorePanel(a)
     let rect=localScoreRect(); let rows=a.localScores.forChart(a.scoreChart)
     r.pushClip(rect)

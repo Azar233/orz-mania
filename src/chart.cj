@@ -3,7 +3,7 @@ package orz_mania
 import std.collection.{ArrayList}
 import std.fs.{File, exists}
 import std.convert.*
-import std.math.abs
+import std.math.{abs,sqrt}
 
 func require(ok: Bool, message: String): Unit {
     if (!ok) { throw IllegalArgumentException(message) }
@@ -19,6 +19,7 @@ class Note {
     let lane: Int64
     let time: Int64
     let end: Int64
+    var broken=false
     var headError: Int64 = 0
     var state: Int64 = 0 // 0 pending, 1 held, 2 judged
     init(lane: Int64, time: Int64, end: Int64) { this.lane=lane; this.time=time; this.end=end }
@@ -131,12 +132,22 @@ func bindings(keys: Int64): Array<Int64> {
         case _ => [65,83,68,70,32,74,75,76,59]
     }
 }
+// ScoreV1: separate score and accuracy weights; cached once, never allocated per judgement.
+let HIT_VALUES: Array<Int64>=[320,300,200,100,50,0]
+let ACC_VALUES: Array<Int64>=[300,300,200,100,50,0]
+let BONUS_VALUES: Array<Int64>=[32,32,16,8,4,0]
+let BONUS_CHANGES: Array<Int64>=[2,1,-8,-24,-44,0]
+let BONUS_ROOTS=Array<Float64>(101,{i => sqrt(Float64(i))})
+let HIT_LABELS=["PERFECT","GREAT","GOOD","OK","MEH","MISS"]
 class Play {
     var assisted=false
     let keyOverlay=KeyOverlay()
     let chart: Chart
     var combo: Int64 = 0
     var maxCombo: Int64 = 0
+    var bonus: Int64=100
+    var scoreUnits: Float64=0.0
+    let windows: Array<Int64>
     var earned: Int64 = 0
     var judged: Int64 = 0
     var score: Int64 = 0
@@ -149,52 +160,60 @@ class Play {
     var cursor: Int64 = 0
     init(chart: Chart) {
         this.chart=chart; assisted=chart.playbackRate != 100
-        for (n in chart.notes) { n.state=0; n.headError=0 }
+        windows=[16,Int64(64.0-chart.od*3.0),Int64(97.0-chart.od*3.0),Int64(127.0-chart.od*3.0),Int64(151.0-chart.od*3.0),Int64(188.0-chart.od*3.0)]
+        for (n in chart.notes) { n.state=0; n.headError=0; n.broken=false }
     }
-    func window(): Int64 { Int64(188.0 - chart.od*3.0) }
+    func window(): Int64 { windows[5] }
     func grade(delta: Int64): Int64 {
         let d=abs(delta)
-        if (d <= 16) { return 0 }
-        if (d <= Int64(64.0-chart.od*3.0)) { return 1 }
-        if (d <= Int64(97.0-chart.od*3.0)) { return 2 }
-        if (d <= Int64(127.0-chart.od*3.0)) { return 3 }
-        if (d <= window()) { return 4 }
+        for (g in 0..5) { if (d <= windows[g]) { return g } }
         5
     }
+    func holdGrade(n: Note,tailError: Int64): Int64 {
+        if (n.broken) { return 4 }
+        let head=Float64(abs(n.headError)); let combined=head+Float64(abs(tailError))
+        if (head <= Float64(windows[0])*1.2 && combined <= Float64(windows[0])*2.4) { return 0 }
+        if (head <= Float64(windows[1])*1.1 && combined <= Float64(windows[1])*2.2) { return 1 }
+        if (head <= Float64(windows[2]) && combined <= Float64(windows[2])*2.0) { return 2 }
+        if (head <= Float64(windows[3]) && combined <= Float64(windows[3])*2.0) { return 3 }
+        4
+    }
     func award(g: Int64, now: Int64): Unit {
-        let values: Array<Int64>=[320,300,200,100,50,0]
-        let labels=["PERFECT","GREAT","GOOD","OK","MEH","MISS"]
-        counts[g]++; judged++; earned+=values[g]
+        counts[g]++; judged++; earned+=ACC_VALUES[g]
+        bonus=if (g == 5) { 0 } else { max(0,min(100,bonus+BONUS_CHANGES[g])) }
+        scoreUnits+=Float64(HIT_VALUES[g])+Float64(BONUS_VALUES[g])*BONUS_ROOTS[bonus]
+        score=min(1000000,Int64(scoreUnits*500000.0/(320.0*Float64(chart.notes.size))+0.5))
         if (g == 5) { combo=0 } else { combo++; maxCombo=max(maxCombo,combo) }
-        score=earned*1000000/(320*chart.notes.size)
-        judge=labels[g]; judgeAt=now
+        judge=HIT_LABELS[g]; judgeAt=now
     }
     func press(lane: Int64, now: Int64): Unit {
         if (lane < 0 || lane >= chart.keys || down[lane]) { return }
-        down[lane]=true
-        keyOverlay.press(lane,now)
+        update(now,false)
+        down[lane]=true; keyOverlay.press(lane,now)
         for (i in cursor..chart.notes.size) {
             let n=chart.notes[i]
             if (n.time > now+window()) { break }
-            if (n.lane == lane && n.state == 0 && abs(now-n.time) <= window()) {
-                error=now-n.time; n.headError=error; offsets.add(error)
-                if (offsets.size > 40) { offsets.remove(at: 0) }
-                if (n.end > n.time) { n.state=1 } else { n.state=2; award(grade(error),now) }
-                return
-            }
+            if (n.lane != lane || n.state == 2) { continue }
+            // Re-grabbing a broken hold does not recover its head precision.
+            if (n.state == 1) { return }
+            error=now-n.time; n.headError=error; offsets.add(error)
+            if (offsets.size > 40) { offsets.remove(at: 0) }
+            if (n.end > n.time) { n.state=1; n.broken=grade(error) == 5 }
+            else { n.state=2; award(grade(error),now) }
+            return
         }
     }
     func release(lane: Int64, now: Int64): Unit {
-        if (lane < 0 || lane >= chart.keys) { return }
-        down[lane]=false
-        keyOverlay.release(lane,now)
+        if (lane < 0 || lane >= chart.keys || !down[lane]) { return }
+        update(now,false)
+        down[lane]=false; keyOverlay.release(lane,now)
         for (i in cursor..chart.notes.size) {
             let n=chart.notes[i]
             if (n.time > now+window()) { break }
             if (n.lane == lane && n.state == 1) {
-                n.state=2
-                // A hold is one judgement: a successful head plus a held tail.
-                award(if (now < n.end-100) { 5 } else { grade(n.headError) },now)
+                let delta=now-n.end
+                if (delta < -windows[4]) { n.broken=true }
+                else { n.state=2; award(if (delta > windows[3]) { 5 } else { holdGrade(n,delta) },now) }
                 return
             }
         }
@@ -204,18 +223,30 @@ class Play {
         for (i in cursor..chart.notes.size) {
             let n=chart.notes[i]
             if (n.time > now+window()) { break }
-            if (autoplay && n.state == 0 && now >= n.time) {
-                keyOverlay.pulse(n.lane,n.time,max(n.time+65,n.end))
-                n.state=if (n.end > n.time) { 1 } else { 2 }; down[n.lane]=n.end > n.time
-                if (n.state == 2) { award(0,now) }
+            if (n.state == 2) { continue }
+            if (autoplay && now >= n.time) {
+                if (n.state == 0) {
+                    keyOverlay.pulse(n.lane,n.time,max(n.time+65,n.end))
+                    n.headError=0; n.broken=false; n.state=1; down[n.lane]=n.end > n.time
+                }
+                if (now >= n.end) { n.state=2; award(0,now); down[n.lane]=false }
+                continue
             }
-            if (n.state == 0 && now > n.time+window()) { n.state=2; award(5,now) }
-            if (n.state == 1 && now >= n.end) { n.state=2; award(grade(n.headError),now); if (autoplay) { down[n.lane]=false } }
+            if (n.state == 0 && now > n.time+windows[3]) {
+                if (n.end > n.time) { n.state=1; n.broken=true; n.headError=window()+1 }
+                else { n.state=2; award(5,now) }
+            }
+            // A held tail waits for release; at the late OK boundary resolve it once.
+            if (n.state == 1 && now > n.end+windows[3]) {
+                n.state=2
+                award(if (down[n.lane]) { holdGrade(n,windows[3]) } else { 5 },now)
+            }
         }
         while (cursor < chart.notes.size && chart.notes[cursor].state == 2) { cursor++ }
         keyOverlay.advance(now)
     }
-    func accuracy(): Int64 { if (judged == 0) { 10000 } else { earned*10000/(320*judged) } }
+    func accuracy(): Int64 { if (judged == 0) { 10000 } else { earned*10000/(300*judged) } }
+
 }
 func percent(value: Int64): String { "${value/100}.${if (value%100 < 10) { "0" } else { "" }}${value%100}%" }
 

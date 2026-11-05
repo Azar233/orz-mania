@@ -76,6 +76,7 @@ func saveSettings(a: App): Unit {
     } catch (ex: Exception) { a.message="无法保存设置："+ex.message; println(a.message) }
 }
 func openMenu(a: App,ticks: Int64): Unit {
+    if (a.screen == 3) { return }
     setSearchHover(a,false); a.searchFocused=false; a.searchComposition=""
     a.brandHover=false
     a.bindingCapture = -1; a.bindingMessage=""; a.rateEditing=false; a.rateMessage=""

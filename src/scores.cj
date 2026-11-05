@@ -6,7 +6,7 @@ import std.fs.{File,FileInfo,Directory,exists,remove}
 import std.time.DateTime
 
 let LOCAL_SCORE_LIMIT: Int64=20
-let SCORE_FILE_HEADER="orz-mania-local-scores-v1"
+let SCORE_FILE_HEADER="orz-mania-local-scores-v2-scorev1"
 foreign {
     func SDL_murmur3_32(data: CPointer<Unit>,length: UIntNative,seed: UInt32): UInt32
     func MoveFileExW(from: CPointer<UInt16>,to: CPointer<UInt16>,flags: UInt32): Int32
@@ -59,7 +59,7 @@ class LocalScore {
     let detail: String
     let dateText: String
     init(score: Int64,accuracy: Int64,combo: Int64,misses: Int64,total: Int64,date: String) {
-        require(score >= 0 && score <= 1000000 && accuracy >= 0 && accuracy <= 10000 && score/100 == accuracy,"Invalid score or accuracy")
+        require(score >= 0 && score <= 1000000 && accuracy >= 0 && accuracy <= 10000,"Invalid score or accuracy")
         require(total > 0 && total <= 1000000 && combo >= 0 && combo <= total && misses >= 0 && misses <= total,"Invalid score counts")
         require(!date.isEmpty() && date.size <= 80 && !date.contains("\t") && !date.contains("\n") && !date.contains("\r"),"Invalid score date")
         this.score=score; this.accuracy=accuracy; this.combo=combo; this.misses=misses; this.total=total; this.date=date
@@ -99,7 +99,7 @@ class LocalScores {
     var reads: Int64=0
     var lastRank: Int64=0
     var loadedIdentity=""
-    init(path!: String="data/local-scores-v1.tsv") {
+    init(path!: String="data/local-scores-v2.tsv") {
         this.path=path
         if (!exists(path)) { return }
         try {

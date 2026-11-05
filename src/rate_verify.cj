@@ -19,7 +19,7 @@ func verifyRate(a: App,w: SdlWindow): Unit {
         require(p.grade(16) == 0 && p.grade(17) == 1 && p.window() == 173,"Judgement windows stay in real milliseconds")
         p.press(0,c.notes[0].time); p.release(0,c.notes[0].time)
         p.press(1,c.notes[1].time); p.release(1,c.notes[1].time)
-        p.press(2,c.notes[2].time); p.update(c.notes[2].end,false)
+        p.press(2,c.notes[2].time); p.release(2,c.notes[2].end)
         require(p.score == 1000000 && p.judged == 3 && p.assisted == (rate != 100),"Scaled manual inputs complete normally but rate runs are Mods")
     }
     let saved=File.readFrom("settings.cfg"); let chosen=a.selected; let originalRate=a.rate; let auto=a.autoplay
