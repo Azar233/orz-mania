@@ -76,7 +76,8 @@ func drawScoreNotice(a: App,r: Renderer): Unit {
     if (!a.completionHandled) { return }
     let label=if (a.scoreSaved) {
         if (a.english) { "Local rank #${a.localScores.lastRank}" } else { "本地第 ${a.localScores.lastRank} 名" }
-    } else if (!a.rankedRun) { tr(a,"自动演示不计入排行") }
+    } else if (a.activeRate != 100) { a.activeRateText+" · "+tr(a,"倍速 Mod · 不计入排行") }
+    else if (!a.rankedRun) { tr(a,"自动演示不计入排行") }
     else { tr(a,a.localScores.status) }
     if (label.isEmpty()) { return }
     let rect=resultNoticeRect()

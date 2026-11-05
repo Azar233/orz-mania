@@ -127,7 +127,7 @@ class LocalScores {
     }
     func forChart(key: String): ArrayList<LocalScore> { if (charts.contains(key)) { charts[key] } else { empty } }
     func record(p: Play): Bool {
-        if (!writable || p.assisted || p.chart.scoreKey.isEmpty() || p.judged != p.chart.notes.size) { return false }
+        if (!writable || p.chart.playbackRate != 100 || p.assisted || p.chart.scoreKey.isEmpty() || p.judged != p.chart.notes.size) { return false }
         try {
             let key=p.chart.scoreKey
             lastRank=1

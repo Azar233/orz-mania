@@ -4,6 +4,8 @@ import sdl.*
 import std.math.abs
 
 func calibrationClamp(value: Int64): Int64 { max(-300,min(300,value)) }
+// Keep the reference note positions fixed while moving the judgement target.
+func visualJudgementOffset(value: Int64,reference: Int64): Int64 { max(max(-300,reference-300),min(min(300,reference+300),value)) }
 func calibrationRound(value: Int64): Int64 { if (value < 0) { -((-value+2)/5)*5 } else { (value+2)/5*5 } }
 func calibrationMedian(values: Array<Int64>,count: Int64): Int64 {
     for (i in 1..count) {
@@ -30,7 +32,7 @@ class OffsetSamples {
     func reset(visual: Bool,audio: Int64,video: Int64,now!: Int64=0): Unit {
         this.visual=visual; referenceAudio=audio; referenceVisual=video
         count=0; cursor=0; inliers=0; spread=0; lastBeat = -1; lastTap = -10000; warmUntil=now+1500
-        suggestion=if (visual) { video } else { audio }
+        suggestion=audio
     }
     func ready(): Bool { inliers >= 8 && spread <= 25 }
     func add(position: Int64): Bool {
@@ -40,7 +42,7 @@ class OffsetSamples {
         let error=cue-beat*CALIBRATION_PERIOD
         if (beat == lastBeat || abs(error) > 300) { return false }
         lastBeat=beat; lastTap=position
-        values[cursor]=if (visual) { error } else { -error }
+        values[cursor]=if (visual) { referenceAudio+referenceVisual-error } else { -error }
         cursor=(cursor+1)%32; count=min(32,count+1)
         for (i in 0..count) { sorted[i]=values[i] }
         let median=calibrationMedian(sorted,count)
@@ -49,7 +51,8 @@ class OffsetSamples {
         let threshold=max(15,spread*3)
         inliers=0
         for (i in 0..count) { if (abs(values[i]-median) <= threshold) { sorted[inliers]=values[i]; inliers++ } }
-        suggestion=calibrationClamp(calibrationRound(calibrationMedian(sorted,inliers)))
+        let estimate=calibrationRound(calibrationMedian(sorted,inliers))
+        suggestion=if (visual) { visualJudgementOffset(estimate,referenceAudio+referenceVisual) } else { calibrationClamp(estimate) }
         true
     }
 }
@@ -57,9 +60,11 @@ class OffsetCalibration <: Resource {
     let audio: CalibrationAudio
     let samples=OffsetSamples()
     let resumePreview: Bool
-    var visual=false
-    var showNotes=false
-    var sound=true
+    let initialAudio: Int64
+    let initialVisual: Int64
+    var visual=true
+    var showNotes=true
+    var sound=false
     var running=false
     var hasChanges=false
     var draftAudio: Int64
@@ -68,16 +73,18 @@ class OffsetCalibration <: Resource {
     var message=""
     var closed=false
     init(a: App) {
-        draftAudio=a.offset; draftVisual=a.visualOffset
+        initialAudio=a.offset; initialVisual=a.visualOffset
+        // Visual calibration uses a neutral chart clock, independent of any old audio result.
+        draftAudio=a.offset; draftVisual = -draftAudio
         resumePreview=a.music.playing(); audio=CalibrationAudio(a.music)
         if (resumePreview) { a.music.pause() }
-        samples.reset(false,draftAudio,draftVisual)
+        samples.reset(true,draftAudio,draftVisual)
     }
     func canStart(): Bool { if (visual) { showNotes } else { sound } }
-    func canApply(): Bool { hasChanges && (!running || samples.count == 0 || samples.ready()) }
+    func canApply(): Bool { hasChanges && (samples.count == 0 || samples.ready()) }
     func start(): Unit {
         if (!canStart()) { return }
-        audio.start(sound); position=0; running=true; message=""
+        audio.start(sound); position=0; running=true; message=""; hasChanges=false
         samples.reset(visual,draftAudio,draftVisual)
     }
     func stop(): Unit { audio.stop(); running=false }
@@ -89,18 +96,29 @@ class OffsetCalibration <: Resource {
     func tap(): Unit {
         if (!running) { return }
         tick()
+        recordTap(position)
+    }
+    func recordTap(position: Int64): Unit {
         if (running && samples.add(position) && samples.ready()) {
-            if (visual) { draftVisual=samples.suggestion } else { draftAudio=samples.suggestion }
+            draftAudio=samples.suggestion
+            if (visual) { draftVisual=samples.referenceAudio+samples.referenceVisual-draftAudio }
             hasChanges=true
         }
     }
     func mode(visual: Bool): Unit {
         stop(); this.visual=visual; showNotes=visual; sound = !visual; position=0; message=""
+        draftAudio=initialAudio; draftVisual=if (visual) { -draftAudio } else { initialVisual }; hasChanges=false
         samples.reset(visual,draftAudio,draftVisual)
     }
     func adjust(delta: Int64): Unit {
-        if (visual) { draftVisual=calibrationClamp(draftVisual+delta) } else { draftAudio=calibrationClamp(draftAudio+delta) }
+        let reference=draftAudio+draftVisual
+        draftAudio=if (visual) { visualJudgementOffset(draftAudio+delta,reference) } else { calibrationClamp(draftAudio+delta) }
+        if (visual) { draftVisual=reference-draftAudio }
         hasChanges=true
+        samples.reset(visual,draftAudio,draftVisual,now: position)
+    }
+    func reset(): Unit {
+        draftAudio=0; draftVisual=if (visual) { 0 } else { initialVisual }; hasChanges=true
         samples.reset(visual,draftAudio,draftVisual,now: position)
     }
     func cueTime(): Int64 { position+if (visual) { samples.referenceAudio+samples.referenceVisual } else { 0 } }
@@ -145,7 +163,7 @@ func handleCalibration(a: App,event: UiEvent): Bool {
             for (i in 0..2) { if (inRect(x,y,calibrationModeRect(i))) { g.mode(i == 0); return true } }
             for (i in 0..4) { if (inRect(x,y,calibrationActionRect(i))) {
                 match (i) {
-                    case 0 => g.adjust(-(if (g.visual) { g.draftVisual } else { g.draftAudio }))
+                    case 0 => g.reset()
                     case 1 => if (g.running) { g.stop() } else { g.start() }
                     case 2 => if (g.canApply()) { a.offset=g.draftAudio; a.visualOffset=g.draftVisual; saveSettings(a); closeCalibration(a) }
                     case _ => closeCalibration(a)

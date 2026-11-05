@@ -1,10 +1,13 @@
 package orz_mania
 
 import std.collection.{ArrayList, HashMap}
+import std.sort.sort
 
 class SongGroup {
     let charts=ArrayList<Int64>()
     var remembered: Int64
+    var sortKey=""
+    var matches: Int64=0
     init(index: Int64) { charts.add(index); remembered=index }
 }
 class LibraryRow {
@@ -12,24 +15,46 @@ class LibraryRow {
     let chart: Int64 // -1 is the song drawer header
     init(group: Int64,chart: Int64) { this.group=group; this.chart=chart }
 }
+func songGroupKey(c: Chart): String {
+    let parts=c.path.replace("\\","/").split("/")
+    String.join(parts[..parts.size-1],delimiter: "/")+"\n"+c.artist+"\n"+c.title
+}
+// Full audio paths distinguish same-title sets and pre-rendered rate variants without per-frame allocation.
+func previewIdentity(c: Chart): String { c.audio }
 func groupCharts(charts: ArrayList<Chart>): ArrayList<SongGroup> {
     let groups=ArrayList<SongGroup>(); let bySong=HashMap<String,Int64>()
     for (i in 0..charts.size) {
-        let key=charts[i].artist+"\n"+charts[i].title
+        let key=songGroupKey(charts[i])
         if (bySong.contains(key)) { groups[bySong[key]].charts.add(i) }
         else { bySong[key]=groups.size; groups.add(SongGroup(i)) }
     }
-    groups
+    for (group in groups) {
+        let c=charts[group.charts[0]]
+        group.sortKey=c.title.trimAscii().toAsciiLower()+"\n"+c.artist.toAsciiLower()+"\n"+c.creator.toAsciiLower()+"\n"+c.path.replace("\\","/")
+    }
+    let ordered=groups.toArray()
+    sort<SongGroup,String>(ordered,key: {group => group.sortKey})
+    ArrayList<SongGroup>(ordered)
 }
 func rebuildLibrary(a: App): Unit {
     a.groups=groupCharts(a.charts); a.openGroup = -1
-    rebuildLibraryRows(a); resetLibraryMotion(a)
+    a.searchIndex.clear()
+    for (c in a.charts) { a.searchIndex.add((c.title+"\n"+c.artist+"\n"+c.creator+"\n"+c.version).toAsciiLower()) }
+    a.searchNormalized="\u{0001}"; filterLibrary(a,a.searchQuery)
 }
 func rebuildLibraryRows(a: App): Unit {
     a.rows.clear()
+    a.visibleSongs=0; a.visibleCharts=0
     for (g in 0..a.groups.size) {
+        let group=a.groups[g]; group.matches=0; var first: Int64 = -1
+        for (chart in a.groups[g].charts) { if (a.searchMatches[chart]) {
+            group.matches++; if (first < 0) { first=chart }
+        } }
+        if (first < 0) { continue }
+        if (!a.searchMatches[group.remembered]) { group.remembered=first }
+        a.visibleSongs++; a.visibleCharts+=group.matches
         a.rows.add(LibraryRow(g,-1))
-        if (a.openGroup == g) { for (chart in a.groups[g].charts) { a.rows.add(LibraryRow(g,chart)) } }
+        if (a.openGroup == g) { for (chart in a.groups[g].charts) { if (a.searchMatches[chart]) { a.rows.add(LibraryRow(g,chart)) } } }
     }
 }
 func syncLibrarySelection(a: App): Unit {

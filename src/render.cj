@@ -178,15 +178,15 @@ func centeredText(r: Renderer,label: String,rect: Rect,size: Float32,color: Colo
 func drawBrandIcon(art: Art,x: Float32,y: Float32,size: Float32): Unit {
     art.image("assets/branding/icon.svg",Rect(x,y,size,size),source: Some(Rect(0.0,200.0,1054.0,1054.0)))
 }
-func libraryMenuRect(): Rect { Rect(1130.0,22.0,116.0,36.0) }
+func libraryMenuRect(): Rect { Rect(28.0,18.0,44.0,44.0) }
 func resultActionRect(retry: Bool): Rect { Rect(if (retry) { 1108.0 } else { 936.0 },665.0,156.0,36.0) }
 func resultAchievementRect(): Rect { Rect(744.0,540.0,520.0,64.0) }
 func resultNoticeRect(): Rect { Rect(936.0,616.0,328.0,32.0) }
 func header(a: App,r: Renderer,art: Art): Unit {
-    drawBrandIcon(art,32.0,22.0,36.0)
+    let iconSize=36.0*(1.0+0.08*a.brandHoverAmount)
+    drawBrandIcon(art,50.0-iconSize/2.0,40.0-iconSize/2.0,iconSize)
     text(r,"orz!mania",78.0,22.0,28.0)
-    let rect=libraryMenuRect()
-    menuButton(a,r,"Esc 菜单",rect.x,rect.y,rect.w,rect.h)
+    drawLibrarySearch(a,r)
     r.fill(Rect(32.0,76.0,1216.0,1.0),Color.rgb(51,41,59))
 }
 func background(a: App,r: Renderer,art: Art,bounds: Rect): Unit {
@@ -200,8 +200,8 @@ func background(a: App,r: Renderer,art: Art,bounds: Rect): Unit {
             art.cover(image,bounds,Int64(42.0*a.libraryFade))
             r.fill(bounds,Color.rgba(16,14,23,165))
         } else {
-            art.cover(image,bounds,if (a.screen == 3) { 185 } else { 66 })
-            r.fill(bounds,Color.rgba(0,0,0,if (a.screen == 3) { 30 } else { 140 }))
+            if (a.screen == 3) { art.cover(image,bounds,185); r.fill(bounds,Color.rgba(0,0,0,30)) }
+            else { art.cover(image,bounds,backgroundAlpha(a.backgroundOpacity)) }
         }
     }
 }
@@ -257,10 +257,13 @@ func animatedJudgement(art: Art,grade: Int64,cx: Float32,age: Int64): Unit {
     let centreY: Float32=329.0
     judgement(art,grade,cx,centreY-height/2.0,height,alpha: alpha)
 }
+func drawModBadge(r: Renderer,rect: Rect,color: Color,title: String,subtitle: String): Unit {
+    box(r,rect.x,rect.y,rect.w,rect.h,color,radius: 4.0)
+    centeredText(r,title,Rect(rect.x,rect.y+4.0,rect.w,28.0),17.0,WHITE)
+    centeredText(r,subtitle,Rect(rect.x,rect.y+31.0,rect.w,20.0),11.0,WHITE.withAlpha(210))
+}
 func autoBadge(a: App,r: Renderer,x: Float32,y: Float32): Unit {
-    box(r,x,y,62.0,55.0,Color.rgb(9,70,133),radius: 4.0)
-    text(r,"AUTO",x+9.0,y+8.0,17.0)
-    text(r,tr(a,"演示"),x+16.0,y+32.0,11.0,color: Color.rgb(187,223,255))
+    drawModBadge(r,Rect(x,y,62.0,55.0),Color.rgb(9,70,133),"AUTO",tr(a,"演示"))
 }
 func drawLibrary(a: App,r: Renderer,art: Art): Unit {
     header(a,r,art)
@@ -269,6 +272,7 @@ func drawLibrary(a: App,r: Renderer,art: Art): Unit {
         return
     }
     let c=a.charts[a.selected]
+    if (a.rows.isEmpty()) { text(r,tr(a,"没有匹配的谱面"),454.0,164.0,18.0,color: MUTED); return }
     if (a.libraryFade < 1.0 && a.libraryPrevious < a.charts.size) {
         art.cover(a.charts[a.libraryPrevious].background,Rect(62.0,144.0,338.0,220.0),255)
     }
@@ -283,13 +287,14 @@ func drawLibrary(a: App,r: Renderer,art: Art): Unit {
     text(r,"${c.keys}K   ·   ${timeLabel(c.duration)}",64.0,475.0,13.0,color: PINK)
     drawLocalScores(a,r)
     text(r,tr(a,"曲库"),454.0,105.0,13.0,color: MUTED)
-    text(r,if (a.english) { "${a.groups.size} songs / ${a.charts.size} charts" } else { "${a.groups.size} 首 / ${a.charts.size} 谱面" },1062.0,105.0,13.0,color: MUTED)
-    r.pushClip(Rect(426.0,144.0,822.0,432.0))
+    text(r,if (a.english) { "${a.visibleSongs} songs / ${a.visibleCharts} charts" } else { "${a.visibleSongs} 首 / ${a.visibleCharts} 谱面" },1062.0,105.0,13.0,color: MUTED)
+    let list=libraryListRect()
+    r.pushClip(list)
     for (i in libraryLayers(a)) {
         let row=a.rows[i]; let group=a.groups[row.group]
         let chart=a.charts[if (row.chart >= 0) { row.chart } else { group.remembered }]
         let y=libraryRowY(a,i)
-        if (y+LIBRARY_HEIGHT <= 144.0 || y >= 576.0) { continue }
+        if (y+LIBRARY_HEIGHT <= list.y || y >= list.y+list.h) { continue }
         let alpha=if (row.chart < 0) { Float32(1.0) } else { 0.35+a.drawerFade*0.65 }
         let focus=libraryEmphasis(a,i)
         let x=libraryCardX(a,i); let width=1228.0-x
@@ -298,7 +303,7 @@ func drawLibrary(a: App,r: Renderer,art: Art): Unit {
         art.cover(chart.background,Rect(x,y,124.0,LIBRARY_HEIGHT),Int64((140.0+115.0*focus)*alpha),thumbnail: true)
         r.pushClip(Rect(x+143.0,y+9.0,width-180.0,76.0))
         text(r,if (row.chart < 0) { chart.title } else { chart.version },x+143.0,y+14.0,21.0,color: WHITE.lerp(PINK,focus).withAlpha(Int64(255.0*alpha)))
-        text(r,if (row.chart < 0) { if (a.english) { "${chart.artist}   ·   ${group.charts.size} charts" } else { "${chart.artist}   ·   ${group.charts.size} 个谱面" } } else { "${chart.keys}K   ·   ${chart.creator}" },x+145.0,y+51.0,13.0,color: MUTED.withAlpha(Int64(255.0*alpha)))
+        text(r,if (row.chart < 0) { if (a.english) { "${chart.artist}   ·   ${group.matches} charts" } else { "${chart.artist}   ·   ${group.matches} 个谱面" } } else { "${chart.keys}K   ·   ${chart.creator}" },x+145.0,y+51.0,13.0,color: MUTED.withAlpha(Int64(255.0*alpha)))
         r.popClip()
         if (row.chart < 0) {
             let cx: Float32=1196.0; let cy=y+45.0
@@ -349,6 +354,7 @@ func drawPlay(a: App,p: Play,r: Renderer,art: Art): Unit {
     let progress=min(Float32(1.0),max(Float32(0.0),Float32(a.now)/Float32(c.duration)))
     drawSongProgress(r,progress)
     if (a.autoplay) { autoBadge(a,r,1201.0,116.0) }
+    drawRateBadge(a,r)
     for (i in 0..c.keys) {
         let x=left+Float32(i)*lane
         if (p.down[i]) {

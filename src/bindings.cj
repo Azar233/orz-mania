@@ -105,6 +105,7 @@ func centeredBindingText(a: App,r: Renderer,value: String,rect: Rect,y: Float32,
     let label=tr(a,value)
     text(r,label,rect.x+(rect.w-r.textWidth(label,pointSize: size))/2.0,y,size,color: color)
 }
+func bindingResetRect(): Rect { Rect(824.0,140.0,156.0,36.0) }
 func drawBindings(a: App,r: Renderer): Unit {
     box(r,492.0,202.0,488.0,42.0,Color.rgb(33,28,41),radius: 4.0)
     for (i in 0..9) {
@@ -129,5 +130,6 @@ func drawBindings(a: App,r: Renderer): Unit {
         centeredBindingText(a,r,value,rect,rect.y+64.0-r.textHeight(pointSize: size)/2.0,size,if (capture) { PINK } else { WHITE })
     }
     text(r,tr(a,a.bindingMessage),492.0,462.0,13.0,color: PINK)
-    menuButton(a,r,"恢复默认",492.0,540.0,156.0,36.0)
+    let reset=bindingResetRect()
+    menuButton(a,r,"恢复默认",reset.x,reset.y,reset.w,reset.h)
 }

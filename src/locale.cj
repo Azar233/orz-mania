@@ -4,6 +4,10 @@ package orz_mania
 func tr(a: App,value: String): String {
     if (!a.english) { return value }
     match (value) {
+        case "游玩倍速" => "Playback rate"
+        case "倍速" => "Rate"
+        case "请输入 0.50–2.00" => "Enter 0.50–2.00"
+        case "倍速 Mod · 不计入排行" => "Rate Mod · unranked"
         case "校准" => "Calibrate"
         case "偏移校准" => "Offset calibration"
         case "目押" => "Visual"
@@ -25,6 +29,7 @@ func tr(a: App,value: String): String {
         case "声音 ON" => "Sound ON"
         case "声音 OFF" => "Sound OFF"
         case "参考节奏固定；建议值只在应用后生效。" => "Fixed reference; changes take effect only on Apply."
+        case "目押优先调整判定，保持下落位置。" => "Visual taps set timing; note positions stay fixed."
         case "校准音频不可用" => "Calibration audio unavailable"
         case "重置" => "Reset"
         case "开始" => "Start"
@@ -40,8 +45,12 @@ func tr(a: App,value: String): String {
         case "设置" => "Settings"
         case "操作说明" => "How to play"
         case "曲库" => "Library"
+        case "搜索歌名 / 歌手 / 谱师 / 难度" => "Search songs / artists / mappers / difficulties"
+        case "没有匹配的谱面" => "No matching charts"
         case "按键绑定" => "Key bindings"
         case "显示" => "Display"
+        case "游玩背景可见度" => "Gameplay background"
+        case "请输入 0–100" => "Enter 0–100"
         case "返回选曲" => "Song select"
         case "继续游玩" => "Resume"
         case "关闭菜单" => "Close menu"

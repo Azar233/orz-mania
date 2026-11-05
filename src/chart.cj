@@ -24,6 +24,7 @@ class Note {
     init(lane: Int64, time: Int64, end: Int64) { this.lane=lane; this.time=time; this.end=end }
 }
 class Chart {
+    var playbackRate: Int64=100
     var scoreKey=""
     var path = ""
     var title = "Untitled"
@@ -147,7 +148,7 @@ class Play {
     let offsets=ArrayList<Int64>()
     var cursor: Int64 = 0
     init(chart: Chart) {
-        this.chart=chart
+        this.chart=chart; assisted=chart.playbackRate != 100
         for (n in chart.notes) { n.state=0; n.headError=0 }
     }
     func window(): Int64 { Int64(188.0 - chart.od*3.0) }

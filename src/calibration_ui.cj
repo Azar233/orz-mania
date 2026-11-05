@@ -27,8 +27,8 @@ func drawCalibration(a: App,r: Renderer): Unit {
         }
         r.popClip()
     } else { centeredText(r,tr(a,"音符已隐藏"),lane,13.0,MUTED) }
-    text(r,tr(a,if (g.visual) { "建议视觉偏移" } else { "建议判定偏移" }),514.0,254.0,18.0)
-    let draft=if (g.visual) { g.draftVisual } else { g.draftAudio }
+    text(r,tr(a,"建议判定偏移"),514.0,254.0,18.0)
+    let draft=g.draftAudio
     let suggested=if (g.running && model.count > 0) { model.suggestion } else { draft }
     text(r,"${suggested} ms",514.0,285.0,32.0,color: PINK)
     text(r,if (a.english) { "Samples ${model.inliers} / ${model.count}   ·   spread ±${model.spread} ms" }
@@ -58,7 +58,7 @@ func drawCalibration(a: App,r: Renderer): Unit {
     let notes=calibrationToggleRect(false); let sound=calibrationToggleRect(true)
     menuButton(a,r,if (g.showNotes) { "音符 ON" } else { "音符 OFF" },notes.x,notes.y,notes.w,notes.h,active: g.showNotes)
     menuButton(a,r,if (g.sound) { "声音 ON" } else { "声音 OFF" },sound.x,sound.y,sound.w,sound.h,active: g.sound)
-    text(r,tr(a,"参考节奏固定；建议值只在应用后生效。"),514.0,496.0,12.0,color: MUTED)
+    text(r,tr(a,if (g.visual) { "目押优先调整判定，保持下落位置。" } else { "参考节奏固定；建议值只在应用后生效。" }),514.0,496.0,12.0,color: MUTED)
     let labels=["重置","开始","应用","返回"]
     for (i in 0..4) {
         let rect=calibrationActionRect(i)

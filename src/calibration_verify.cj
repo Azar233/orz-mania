@@ -19,7 +19,8 @@ func verifyCalibration(a: App,w: SdlWindow): Unit {
     require(samples.count == 32 && samples.ready() && samples.suggestion == 65,"Early taps give a positive offset; sample storage is bounded and rounds to 5ms")
     samples.reset(true,-45,20)
     for (beat in 3..15) { let _=samples.add(beat*750+45-20+70) }
-    require(samples.ready() && samples.suggestion == 70,"Visual calibration isolates display/input latency from the audio offset and old visual setting")
+    require(samples.ready() && samples.suggestion == -95,"Visual taps estimate a new judgement offset from the fixed visual reference")
+    require(visualJudgementOffset(-999,-500) == -300 && visualJudgementOffset(999,500) == 300,"Linked correction keeps judgement and visual offsets within supported bounds")
     samples.reset(false,0,0)
     for (beat in 3..15) { let _=samples.add(beat*750+if (beat%2 == 0) { 90 } else { -90 }) }
     require(!samples.ready(),"Unstable alternating inputs are not ready to apply")
@@ -39,6 +40,7 @@ func verifyCalibration(a: App,w: SdlWindow): Unit {
         let _=handleMenu(a,w,UiEvent.MouseDown(MouseButton.Left,entry.x+2.0,entry.y+2.0))
         require(a.calibration.isSome(),"Settings button opens the guide")
         let g=a.calibration.getOrThrow()
+        require(g.visual && g.showNotes && !g.sound,"Guide opens in visual-first mode")
         let requests=a.music.previewLoads; a.preview(async: true)
         require(a.music.previewLoads == requests && !a.music.playing(),"Guide pauses preview and suppresses new preview jobs")
         g.mode(true); require(g.showNotes && !g.sound && !g.running,"Visual mode defaults to visible notes and muted sound")
@@ -65,26 +67,46 @@ func verifyCalibration(a: App,w: SdlWindow): Unit {
         let _=handleWindowEvent(a,w,UiEvent.WindowFocusLost)
         require(!g.running,"Focus loss stops calibration")
         g.mode(false); require(!g.showNotes && g.sound && g.samples.count == 0,"Changing mode stops and clears prior samples")
+        require(!g.canApply(),"Changing mode clears the previous mode's apply state")
         g.sound=false; g.start(); require(!g.running,"Audio mode cannot start without its primary cue")
         g.adjust(5); require(g.draftAudio == -30 && a.offset == -35,"Manual adjustment changes only the draft")
         let _=handleCalibration(a,UiEvent.KeyDown(Key.Escape,false))
         require(g.isClosed() && a.calibration.isNone() && a.offset == -35 && a.visualOffset == 25,"Cancel releases resources and discards drafts")
         if (wasPlaying) { require(a.music.playing(),"Closing guide resumes the continuous preview") }
+        // Reproduce the reported flow: old audio offset, then visual calibration and Apply.
+        a.offset = -70; a.visualOffset=20
         openCalibration(a); let apply=a.calibration.getOrThrow()
-        apply.mode(true); apply.adjust(5)
+        apply.adjust(5)
+        require(apply.draftAudio == -65 && apply.draftVisual == 65 && a.offset == -70,"Visual manual correction changes judgement while preserving the neutral note reference")
+        apply.mode(false); apply.adjust(10); apply.mode(true)
+        require(!apply.canApply() && apply.draftAudio == -70 && apply.draftVisual == 70 && apply.cueTime() == 0,"An unsampled visual mode cannot apply the previous audio draft or inherit its reference shift")
+        apply.start()
+        for (beat in 3..15) { apply.recordTap(beat*750+120) }
+        require(apply.canApply() && apply.draftAudio == -120 && apply.draftVisual == 120,"Visual result replaces the old audio offset and maintains the neutral visual timeline")
+        for (beat in 20..52) { apply.recordTap(beat*750+50+if (beat%2 == 0) { 90 } else { -90 }) }
+        apply.stop(); require(!apply.canApply(),"Stopping an unstable sample set does not re-enable stale suggestions")
+        apply.start(); require(!apply.canApply(),"Restart requires new valid samples")
+        for (beat in 3..15) { apply.recordTap(beat*750+120) }
         let rect=calibrationActionRect(2)
         let _=handleCalibration(a,UiEvent.MouseDown(MouseButton.Left,rect.x+2.0,rect.y+2.0))
-        require(a.calibration.isNone() && a.offset == -35 && a.visualOffset == 30,"Apply changes only the chosen offset")
+        require(a.calibration.isNone() && a.offset == -120 && a.visualOffset == 120,"Visual Apply updates the main settings value, not only a hidden visual offset")
+        let play=Play(parseChart(SCORE_TEST_MAP,"Songs/test/visual-calibration.osu"))
+        a.now=1120+a.offset; play.press(0,a.now)
+        require(play.error == 0 && play.counts[0] == 1 && visualNoteTime(a) == 1120,"The same visual input now scores PERFECT without moving the neutral reference notes")
         a.offset=0; a.visualOffset=0; loadSettings(a)
-        require(a.offset == -35 && a.visualOffset == 30,"Both offsets survive save/reload")
-        File.writeTo("settings.cfg",String.fromUtf8(File.readFrom("settings.cfg")).replace("visualOffset=30","visualOffset=999").toArray())
-        loadSettings(a); require(a.offset == -35 && a.visualOffset == 0,"Invalid optional visual setting preserves the valid legacy settings")
+        require(a.offset == -120 && a.visualOffset == 120,"Visual-first result survives save/reload")
+        openCalibration(a); let audio=a.calibration.getOrThrow(); audio.mode(false); audio.start()
+        for (beat in 3..15) { audio.recordTap(beat*750+45) }
+        let _=handleCalibration(a,UiEvent.MouseDown(MouseButton.Left,rect.x+2.0,rect.y+2.0))
+        require(a.offset == -45 && a.visualOffset == 120,"Explicitly applying optional audio calibration still works")
+        File.writeTo("settings.cfg",String.fromUtf8(File.readFrom("settings.cfg")).replace("visualOffset=120","visualOffset=999").toArray())
+        loadSettings(a); require(a.offset == -45 && a.visualOffset == 0,"Invalid optional visual setting preserves the valid legacy settings")
         a.screen=2; openCalibration(a)
         require(a.calibration.isNone(),"Gameplay pause retains only the skin Retry/Quit actions")
         a.screen=0; openCalibration(a); let cleanup=a.calibration.getOrThrow()
         a.back(); require(cleanup.isClosed() && a.calibration.isNone(),"Returning to library closes calibration before music teardown")
         a.english=true; require(tr(a,"目押") == "Visual" && tr(a,"应用") == "Apply","Guide labels follow the active language")
-        println("PASS calibration: signs / independent clocks / warmup / duplicate and outlier rejection / stability / bounded samples / native muted clock / input / preview isolation / cancel / apply / persistence / focus loss / resource cleanup")
+        println("PASS calibration: visual-first defaults / visual judgement override and PERFECT input / fixed note reference / mode isolation / restart and stopped unstable samples / signs / bounded offsets and samples / native clock / audio option / cancel and apply / persistence / focus loss / resource cleanup")
     } finally {
         closeCalibration(a,resume: false); a.back()
         if (existed) { File.writeTo("settings.cfg",saved); loadSettings(a) }

@@ -56,6 +56,9 @@
 !/docs/media/display.png
 !/docs/media/bindings.png
 !/docs/media/pause.png
+!/docs/media/calibration.png
+!/docs/media/practice-slow.gif
+!/docs/media/practice-fast.gif
 
 # Keep only the skin image families used by this game, plus skin.ini provenance.
 /assets/skin/*.png

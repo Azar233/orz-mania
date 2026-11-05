@@ -15,7 +15,20 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
     let esc=UiEvent.KeyDown(Key.Escape,false)
     try {
         verifyLibraryTitle(w.renderer)
-        for (top in [326.0,410.0,444.0,472.0,486.0]) {
+        verifyBackgroundOpacity(a,w)
+        verifySongGrouping(a)
+        verifyLibrarySearch(a,w)
+        a.menuOpen=false; a.brandHover=true; a.brandHoverAmount=0.0
+        for (_ in 0..30) { animateLibrary(a,Float32(1.0/60.0)) }
+        let hover60=a.brandHoverAmount; a.brandHoverAmount=0.0
+        for (_ in 0..60) { animateLibrary(a,Float32(1.0/120.0)) }
+        require(abs(hover60-a.brandHoverAmount) < 0.001 && a.brandHoverAmount > 0.99 && a.brandHoverAmount <= 1.0,"Icon hover easing is bounded and frame-rate independent")
+        let _=handle(a,w,UiEvent.MouseMove(600.0,40.0))
+        for (_ in 0..30) { animateLibrary(a,Float32(1.0/60.0)) }
+        require(!a.brandHover && a.brandHoverAmount < 0.01,"Icon shrinks back on pointer exit")
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,1180.0,38.0))
+        require(!a.menuOpen,"Removed top-right menu button is inactive")
+        for (top in [326.0,410.0,426.0,462.0,472.0,498.0]) {
             let rect=settingValueRect(Float32(top))
             require(rect.w == 112.0 && rect.h == 32.0 && rect.x+rect.w == 980.0,"Discrete settings share size and right alignment")
             require(inRect(rect.x+rect.w/2.0,rect.y+rect.h/2.0,rect) && !inRect(rect.x+rect.w,rect.y,rect),"Setting value hit bounds")
@@ -24,7 +37,7 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         require(tr(a,"语言") == "语言","Chinese language label must be monolingual")
         a.english=true
         require(tr(a,"语言") == "Language","English language label must be monolingual")
-        require(w.renderer.textWidth("English",pointSize: 16.0) < settingValueRect(486.0).w-16.0,"Language value fits the shared button")
+        require(w.renderer.textWidth("English",pointSize: 16.0) < settingValueRect(498.0).w-16.0,"Language value fits the shared button")
         a.english=false
         let _=handle(a,w,esc)
         require(a.menuOpen && a.menuPage == 0,"Esc opens settings")
@@ -42,10 +55,10 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         a.vsync=sync; a.showFPS=stats
         a.menuPage=0
         let auto=a.autoplay
-        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,924.0,460.0))
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,924.0,442.0))
         require(a.autoplay != auto,"Aligned autoplay button hit box")
         a.autoplay=auto
-        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,900.0,502.0))
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,900.0,514.0))
         require(a.english && a.menuFocus == 4 && tr(a,"设置") == "Settings","Language button switches immediately")
         require(tr(a,"Esc 菜单") == "Esc Menu" && tr(a,"按键绑定") == "Key bindings","English UI labels")
         draw(a,w.renderer,art)
@@ -79,12 +92,12 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
             draw(a,w.renderer,art)
             let rect=w.renderer.fitCanvas(1280.0,720.0)
             let nativeScale=w.scale*w.currentPixelDensity
-            let px=(rect.x+1180.0*rect.w/1280.0)/nativeScale
-            let py=(rect.y+38.0*rect.w/1280.0)/nativeScale
+            let px=(rect.x+50.0*rect.w/1280.0)/nativeScale
+            let py=(rect.y+40.0*rect.w/1280.0)/nativeScale
             let point=canvasPoint(w,px,py)
-            require(abs(point.x-1180.0) < 0.1 && abs(point.y-38.0) < 0.1,"Resized coordinates preserve UI hit testing")
+            require(abs(point.x-50.0) < 0.1 && abs(point.y-40.0) < 0.1,"Resized coordinates preserve UI hit testing")
             let _=handleWindowEvent(a,w,UiEvent.MouseDown(MouseButton.Left,px,py))
-            require(a.menuOpen,"Resized Esc button works"); a.menuOpen=false
+            require(a.menuOpen && !a.brandHover,"Resized icon menu entry works and clears hover"); a.menuOpen=false
         }
         w.setSize(1280,720); w.delay(100)
         while (let Some(_) <- w.pollEvent()) {}
@@ -94,10 +107,14 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         require(a.bindingCapture == 0,"Compact keycap remains clickable")
         let _=handle(a,w,esc)
         require(a.bindingCapture == -1 && a.menuOpen,"Esc cancels capture without closing menu")
+        let reset=bindingResetRect(); let otherKey=a.keymaps[1][0]
+        a.keymaps[3]=[90,88,74,75]
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,reset.x+reset.w/2.0,reset.y+reset.h/2.0))
+        require(bindingText(a,4) == "D F J K" && a.keymaps[1][0] == otherKey,"Header reset restores only the selected key count")
         a.start(Int64(w.ticks())); let _=handle(a,w,esc)
         draw(a,w.renderer,art)
         let frozen=a.now; let english=a.english
-        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,900.0,502.0))
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,900.0,514.0))
         require(a.screen == 2 && a.now == frozen && a.english == english,"Pause isolates settings and gameplay")
         let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,640.0,312.0))
         require(a.screen == 1 && !a.menuOpen && a.now == -2000,"Skin Retry resets play")
@@ -118,7 +135,16 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,retry.x+retry.w/2.0,retry.y+retry.h/2.0))
         require(a.screen == 1,"Results Retry button uses its drawn hit box")
         a.back(); a.menuOpen=true
-        require(!handle(a,w,UiEvent.MouseDown(MouseButton.Left,965.0,558.0)),"Quit game button retains its hit box")
+        require(handle(a,w,UiEvent.MouseDown(MouseButton.Left,965.0,558.0)) && a.menuOpen,"Removed footer quit area is inactive")
+        let close=menuActionRect(false); let quit=menuActionRect(true)
+        require(close.x == quit.x && close.w == quit.w && close.y+close.h < quit.y,"Sidebar global actions share width and stack without overlap")
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,close.x+close.w/2.0,close.y+close.h/2.0))
+        require(!a.menuOpen,"Relocated sidebar close button closes the menu")
+        a.menuOpen=true
+        require(!handle(a,w,UiEvent.MouseDown(MouseButton.Left,quit.x+quit.w/2.0,quit.y+quit.h/2.0)),"Sidebar quit button exits")
+        let slow=rateBadgeColor(75); let fast=rateBadgeColor(150)
+        require(slow.g > slow.r && fast.r > fast.g,"Slow rate is green and fast rate is red")
+        require(rateBadgeRect(false).y == 116.0 && rateBadgeRect(true).y == 116.0+55.0+10.0,"Rate badge follows AUTO without overlapping")
         require(art.errors == 0,"UI resources load without errors")
         println("PASS UI logic: compact buttons / language mouse and keyboard / persistence / legacy fallback / unchanged bindings / resize mapping / binding capture / pause retry and quit")
     } finally {
@@ -270,7 +296,7 @@ func verifyMenus(a: App,w: SdlWindow,art: Art): Unit {
 
 func verifyLibraryMotion(a: App): Unit {
     let selected=a.selected
-    a.selected=0; resetLibraryMotion(a)
+    selectLibraryRow(a,0); resetLibraryMotion(a)
     selectLibraryRow(a,min(6,a.rows.size-1))
     animateLibrary(a,0.016)
     require(a.libraryScroll > 0.0 && a.libraryScroll < libraryTarget(a),"Song list must animate instead of jumping")
@@ -280,14 +306,27 @@ func verifyLibraryMotion(a: App): Unit {
     require(libraryHit(a,700.0,y) == visible,"Moving cards must remain clickable")
     for (_ in 0..60) { animateLibrary(a,Float32(1.0/60.0)) }
     let sixty=a.libraryScroll
-    a.selected=0; resetLibraryMotion(a); selectLibraryRow(a,min(6,a.rows.size-1))
+    selectLibraryRow(a,0); resetLibraryMotion(a); selectLibraryRow(a,min(6,a.rows.size-1))
     for (_ in 0..120) { animateLibrary(a,Float32(1.0/120.0)) }
     require(abs(a.libraryScroll-sixty) < 0.01,"Scroll easing must be refresh-rate independent")
-    a.selected=0; resetLibraryMotion(a)
+    selectLibraryRow(a,0); resetLibraryMotion(a)
     require(libraryHit(a,600.0,180.0) == 0 && libraryHit(a,600.0,238.0) == 0 && libraryHit(a,600.0,248.0) == 1,"Overlapping cards must hit the foreground card")
+    let list=libraryListRect()
+    require(libraryFullRows() == 6 && list.y+list.h == 696.0,"Expanded list fills the lower screen and fits six complete rows")
+    if (a.rows.size >= 6) {
+        require(libraryHit(a,700.0,libraryRowY(a,5)+40.0) == 5,"New lower rows remain clickable")
+    }
+    require(libraryHit(a,700.0,list.y+list.h) == -1 && libraryHit(a,list.x-1.0,200.0) == -1,"Expanded hit testing respects the shared clip bounds")
+    a.libraryScroll=0.95
+    if (a.rows.size >= 8) {
+        var included=false
+        for (i in libraryLayers(a)) { if (i == 7) { included=true } }
+        require(included && libraryHit(a,700.0,695.0) == 7,"Fractional scrolling includes the final partially visible row")
+    }
     selectLibraryRow(a,a.rows.size-1)
     for (_ in 0..120) { animateLibrary(a,Float32(1.0/60.0)) }
     require(a.libraryScroll == libraryTarget(a),"Scroll must settle within the library bounds")
+    require(a.libraryScroll == Float32(max(0,a.rows.size-libraryFullRows())),"Last page uses the increased visible row count")
     a.selected=selected; resetLibraryMotion(a)
     println("PASS smooth scrolling / cover fade / 60-120Hz consistency / animated hit testing / list boundaries")
 }
@@ -404,7 +443,7 @@ func verifyDrawers(a: App,w: SdlWindow,art: Art): Unit {
     let otherGroup=a.rows[other].group
     toggleSongDrawer(a,other)
     require(a.openGroup == otherGroup && a.rows.size == a.groups.size+a.groups[otherGroup].charts.size,"Opening another song must close the first")
-    // Equal song metadata groups even non-adjacent files, while a different artist stays separate.
+    // Equal set/song metadata groups non-adjacent files, while a different artist stays separate.
     let samples=ArrayList<Chart>(); let first=Chart(); first.title="Same"; first.artist="A"
     let different=Chart(); different.title="Same"; different.artist="B"
     let last=Chart(); last.title="Same"; last.artist="A"
@@ -803,9 +842,9 @@ func verifyScrollLoading(a: App,w: SdlWindow,art: Art): Unit {
         }
         require(invalid.errors == 1 && invalid.decodeJobs == 1 && invalid.coverJob.isNone(),"Failed images are reported once without a retry storm")
     }
-    for (group in a.groups) { if (group.charts.size > 1) {
+    for (group in a.groups) { if (group.charts.size > 1 && a.charts[group.charts[0]].audio == a.charts[group.charts[1]].audio) {
         a.selected=group.charts[0]
-        let song=a.charts[a.selected].artist+"\n"+a.charts[a.selected].title
+        let song=previewIdentity(a.charts[a.selected])
         let limit=w.ticks()+UInt64(6000)
         while (a.previewSong != song && w.ticks() < limit) { a.preview(async: true); w.delay(2) }
         require(a.previewSong == song,"Preview loads the multi-difficulty song")
@@ -814,9 +853,33 @@ func verifyScrollLoading(a: App,w: SdlWindow,art: Art): Unit {
         require(a.music.previewLoads == requests && a.music.position() >= before-30,"Changing difficulty preserves playback without starting another worker")
         break
     } }
+    var switched=false
+    for (i in 0..a.charts.size) {
+        if (switched) { break }
+        for (j in i+1..a.charts.size) {
+            let first=a.charts[i]; let other=a.charts[j]
+            if (first.artist != other.artist || first.title != other.title || first.audio == other.audio) { continue }
+            a.selected=i
+            let firstDeadline=w.ticks()+UInt64(6000)
+            while (a.previewSong != previewIdentity(first) && w.ticks() < firstDeadline) { a.preview(async: true); w.delay(2) }
+            require(a.previewSong == previewIdentity(first),"First same-title audio loads")
+            a.music.discardPreview(wait: true)
+            let requests=a.music.previewLoads; a.selected=j
+            let otherDeadline=w.ticks()+UInt64(6000)
+            while (a.previewSong != previewIdentity(other) && w.ticks() < otherDeadline) { a.preview(async: true); w.delay(2) }
+            require(a.previewSong == previewIdentity(other) && a.music.previewLoads > requests && a.music.playing(),"Different audio under identical song metadata must switch playback")
+            switched=true; break
+        }
+    }
+    selectLibraryRow(a,0); a.previewSong=""; a.preview(async: true)
+    filterLibrary(a,"__no_search_results_regression__")
+    let emptyDeadline=w.ticks()+UInt64(6000)
+    while (a.music.previewJob.isSome() && w.ticks() < emptyDeadline) { a.preview(async: true); w.delay(2) }
+    require(a.rows.isEmpty() && a.music.previewJob.isNone() && !a.music.playing(),"Empty search drains obsolete preview audio instead of retaining the completed job")
+    filterLibrary(a,"")
     selectLibraryRow(a,min(a.rows.size-1,1)); a.preview(async: true)
     selectLibraryRow(a,min(a.rows.size-1,2)); a.preview(async: true)
-    let latest=a.charts[a.selected].artist+"\n"+a.charts[a.selected].title
+    let latest=previewIdentity(a.charts[a.selected])
     let audioDeadline=w.ticks()+UInt64(6000)
     while (a.previewSong != latest && w.ticks() < audioDeadline) { a.preview(async: true); w.delay(2) }
     require(a.previewSong == latest && a.music.playing(),"Rapid preview requests must commit the latest song")

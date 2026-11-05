@@ -49,7 +49,7 @@ class FramePacer {
     }
     func drawStats(r: Renderer): Unit {
         let ms=Int64(milliseconds*100.0+0.5)
-        text(r,"${Int64(fps+0.5)} FPS  /  ${ms/100}.${if (ms%100 < 10) { "0" } else { "" }}${ms%100} ms",16.0,697.0,11.0,color: WHITE.withAlpha(160))
+        text(r,"${Int64(fps+0.5)} FPS / ${ms/100}.${if (ms%100 < 10) { "0" } else { "" }}${ms%100} ms",4.0,697.0,11.0,color: WHITE.withAlpha(160))
     }
 }
 func fpsPresetRect(index: Int64): Rect { Rect(492.0+Float32(index%4)*123.0,218.0+Float32(index/4)*40.0,115.0,32.0) }
@@ -60,27 +60,35 @@ func changeDisplay(a: App,row: Int64,delta: Int64): Unit {
         case 1 => a.customFPS=max(30,min(2000,a.customFPS+delta*10)); a.framePreset=7
         case 2 => a.vsync = !a.vsync
         case 3 => a.showFPS = !a.showFPS
+        case 4 => a.backgroundOpacity=max(0,min(100,a.backgroundOpacity+delta*5))
         case _ => ()
     }
 }
-func editCustomFPS(a: App): Unit { a.displayEditing=true; a.displayFresh=true; a.displayInput=a.customFPS.toString(); a.displayMessage="" }
+func editCustomFPS(a: App): Unit { a.displayOpacity=false; a.displayEditing=true; a.displayFresh=true; a.displayInput=a.customFPS.toString(); a.displayMessage="" }
+func backgroundValueRect(): Rect { settingValueRect(548.0) }
+func backgroundStepRect(increase: Bool): Rect { Rect(if (increase) { 988.0 } else { 828.0 },548.0,32.0,32.0) }
+func backgroundAlpha(percent: Int64): Int64 { max(0,min(100,percent))*255/100 }
+func editBackgroundOpacity(a: App): Unit { a.displayOpacity=true; a.displayEditing=true; a.displayFresh=true; a.displayInput=a.backgroundOpacity.toString(); a.displayMessage="" }
 func handleDisplayEntry(a: App,event: UiEvent): Bool {
     match (event) {
         case UiEvent.KeyDown(Key.Escape,_) => a.displayEditing=false; a.displayMessage=""
+        case UiEvent.KeyDown(Key.Home,_) => if (a.displayOpacity) { a.backgroundOpacity=30; a.displayEditing=false; a.displayMessage="" }
         case UiEvent.KeyDown(Key.Enter,_) =>
             try {
                 let value=Int64.parse(a.displayInput)
-                require(value >= 30 && value <= 2000,"FPS must be between 30 and 2000")
-                a.customFPS=value; a.framePreset=7; a.displayEditing=false; a.displayMessage=""
-            } catch (_: Exception) { a.displayMessage="请输入 30–2000 之间的整数" }
+                if (a.displayOpacity) { require(value >= 0 && value <= 100,"Visibility must be 0–100"); a.backgroundOpacity=value }
+                else { require(value >= 30 && value <= 2000,"FPS must be between 30 and 2000"); a.customFPS=value; a.framePreset=7 }
+                a.displayEditing=false; a.displayMessage=""
+            } catch (_: Exception) { a.displayMessage=if (a.displayOpacity) { "请输入 0–100" } else { "请输入 30–2000 之间的整数" } }
         case UiEvent.KeyDown(Key.Backspace,_) =>
             if (a.displayFresh) { a.displayInput="" } else if (!a.displayInput.isEmpty()) { a.displayInput=a.displayInput[0..a.displayInput.size-1] }
             a.displayFresh=false
         case UiEvent.KeyDown(Key.Digit(code),_) =>
             if (a.displayFresh) { a.displayInput=""; a.displayFresh=false }
-            if (a.displayInput.size < 4) { a.displayInput+=String.fromUtf8([UInt8(code)]) }
+            if (a.displayInput.size < (if (a.displayOpacity) { 3 } else { 4 })) { a.displayInput+=String.fromUtf8([UInt8(code)]) }
         case _ => ()
     }
+    if (!a.displayEditing) { a.displayOpacity=false }
     true
 }
 func drawDisplaySettings(a: App,r: Renderer): Unit {
@@ -94,8 +102,9 @@ func drawDisplaySettings(a: App,r: Renderer): Unit {
     centeredSettingLabel(a,r,"自定义 FPS",326.0,a.menuFocus == 1)
     let rect=settingValueRect(326.0)
     box(r,rect.x,rect.y,rect.w,rect.h,Color.rgb(38,32,47),radius: 4.0)
-    centeredText(r,if (a.displayEditing) { a.displayInput+" |" } else { a.customFPS.toString() },rect,16.0,if (a.displayEditing) { PINK } else { WHITE })
-    text(r,tr(a,if (a.displayMessage.isEmpty()) { "点击数值输入，Enter 确认，Esc 取消 · 30–2000" } else { a.displayMessage }),492.0,371.0,12.0,color: MUTED)
+    let fpsEditing=a.displayEditing && !a.displayOpacity
+    centeredText(r,if (fpsEditing) { a.displayInput+" |" } else { a.customFPS.toString() },rect,16.0,if (fpsEditing) { PINK } else { WHITE })
+    text(r,tr(a,if (a.displayMessage.isEmpty() || a.displayOpacity) { "点击数值输入，Enter 确认，Esc 取消 · 30–2000" } else { a.displayMessage }),492.0,371.0,12.0,color: MUTED)
     let labels2=["垂直同步","显示 FPS / 帧耗时"]
     let enabled=[a.vsync,a.showFPS]
     for (i in 0..2) {
@@ -104,4 +113,10 @@ func drawDisplaySettings(a: App,r: Renderer): Unit {
         settingValueButton(a,r,if (enabled[i]) { "ON" } else { "OFF" },y,active: enabled[i])
     }
     text(r,tr(a,"同步跟随显示器；同时限帧时取实际较低帧率。"),492.0,515.0,12.0,color: MUTED)
+    centeredSettingLabel(a,r,"游玩背景可见度",548.0,a.menuFocus == 4)
+    let background=backgroundValueRect(); let editing=a.displayEditing && a.displayOpacity
+    box(r,background.x,background.y,background.w,background.h,Color.rgb(38,32,47),radius: 4.0)
+    centeredText(r,if (editing) { a.displayInput+" |" } else { "${a.backgroundOpacity}%" },background,16.0,if (editing) { PINK } else { WHITE })
+    for (increase in [false,true]) { let step=backgroundStepRect(increase); menuButton(a,r,if (increase) { "+" } else { "−" },step.x,step.y,step.w,step.h) }
+    if (a.displayOpacity && !a.displayMessage.isEmpty()) { text(r,tr(a,a.displayMessage),710.0,556.0,12.0,color: PINK) }
 }

@@ -4,7 +4,9 @@
     [ValidateSet('normal','marathon')][string]$Song = 'marathon',
     [ValidateSet('720p','1440p')][string]$Size = '720p',
     [int]$Processors = 0,
-    [switch]$Predecode
+    [switch]$Predecode,
+    [switch]$RateTest,
+    [ValidateRange(50,200)][int]$Rate = 100
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -17,7 +19,8 @@ $previousProcessors = $env:cjProcessorNum
 try {
     if ($Processors -gt 0) { $env:cjProcessorNum = "$Processors" }
     $audioMode = if ($Predecode) { "predecode" } else { "stream" }
-    $proc = Start-Process -FilePath (Join-Path $root 'target/release/bin/main.exe') -ArgumentList @('--benchmark',"$FPS",$Song,$Size,$audioMode) -WorkingDirectory $root -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $outDir 'console.txt') -RedirectStandardError (Join-Path $outDir 'errors.txt')
+    $benchArgs = if ($RateTest) { @('--rate-benchmark',"$Rate",$Size) } else { @('--benchmark',"$FPS",$Song,$Size,$audioMode) }
+    $proc = Start-Process -FilePath (Join-Path $root 'target/release/bin/main.exe') -ArgumentList $benchArgs -WorkingDirectory $root -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $outDir 'console.txt') -RedirectStandardError (Join-Path $outDir 'errors.txt')
 } finally { $env:cjProcessorNum = $previousProcessors }
 $processHandle = $proc.Handle
 $rows = [Collections.Generic.List[object]]::new()
@@ -45,11 +48,12 @@ function Percentile($Values,$Fraction) {
     $ordered[[Math]::Min($ordered.Count-1,[int][Math]::Ceiling(($ordered.Count-1)*$Fraction))]
 }
 $frames=Import-Csv -LiteralPath (Join-Path $outDir 'frames.csv')
-$summary=foreach ($stage in @('library','gameplay')) {
+$stages = if ($RateTest) { @('gameplay') } else { @('library','gameplay') }
+$summary=foreach ($stage in $stages) {
     $samples=@($rows | Where-Object Stage -eq $stage)
     $render=@($frames | Where-Object stage -eq $stage)
     [pscustomobject]@{
-        Stage=$stage; FPSCap=$FPS; Size=$Size; LogicalCPUs=$logical
+        Stage=$stage; FPSCap=$(if ($RateTest) {240} else {$FPS}); Rate=$Rate; Size=$Size; LogicalCPUs=$logical
         CPU_OneCorePct=($samples.CPU_OneCorePct | Measure-Object -Average).Average
         CPU_MachinePct=($samples.CPU_MachinePct | Measure-Object -Average).Average
         WorkingMiB=($samples.WorkingMiB | Measure-Object -Average).Average

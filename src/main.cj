@@ -1,6 +1,7 @@
 package orz_mania
 
 import sdl.*
+import sdl.input.Cursor
 import sdl.dialogs.*
 import sdl.system.PerformanceClock
 import std.process.launch
@@ -43,11 +44,20 @@ class App {
     var customFPS: Int64=240
     var vsync=false
     var showFPS=false
+    var backgroundOpacity: Int64=30
     var english=false
     var displayFresh=true
     var displayEditing=false
+    var displayOpacity=false
     var displayInput=""
     var displayMessage=""
+    var rate: Int64=100
+    var activeRate: Int64=100
+    var activeRateText="1.00×"
+    var rateEditing=false
+    var rateFresh=true
+    var rateInput=""
+    var rateMessage=""
     var autoplay=false
     var message=""
     var menuOpen=false
@@ -64,6 +74,23 @@ class App {
     var libraryPrevious: Int64=0
     var librarySelected: Int64=0
     var libraryHover: Int64 = -1
+    var brandHover=false
+    var searchQuery=""
+    var searchNormalized="\u{0001}"
+    var searchFocused=false
+    var searchHover=false
+    var searchTextCursor: ?Cursor=None
+    var searchArrowCursor: ?Cursor=None
+    var searchCaretStart: Int64=0
+    var searchMeasured=""
+    var searchTextWidth: Float32=0.0
+    var searchComposition=""
+    let searchIndex=ArrayList<String>()
+    var searchMatches=Array<Bool>()
+    var searchPasses: Int64=0
+    var visibleSongs: Int64=0
+    var visibleCharts: Int64=0
+    var brandHoverAmount: Float32=0.0
     let libraryOrder=ArrayList<Int64>()
     let libraryTitle=LibraryTitle()
     var wheelRemainder: Float32=0.0
@@ -75,15 +102,19 @@ class App {
     var previewSong=""
     let timeline=AudioTimeline()
     var music: Music
-    init(music: Music) { this.music=music; loadSettings(this); rebuildLibrary(this) }
+    init(music: Music) { this.music=music; loadSettings(this); rebuildLibrary(this); selectLibraryRow(this,0); resetLibraryMotion(this) }
     func start(ticks: Int64): Unit {
-        if (charts.isEmpty()) { return }
+        if (charts.isEmpty() || (screen == 0 && rows.isEmpty())) { return }
+        setSearchHover(this,false); searchFocused=false; searchComposition=""
         closeCalibration(this,resume: false)
+        brandHover=false
+        activeRate=if (screen == 0) { rate } else { activeRate }
+        activeRateText=rateText(activeRate)
         previewSong=""
-        music.open(charts[selected].audio)
-        play=Some(Play(charts[selected])); screen=1; now = -2000; menuOpen=false; menuDrag = -1
-        liveRanking=Some(LiveRanking(localScores.forChart(charts[selected].scoreKey)))
-        rankedRun = !autoplay; completionHandled=false; scoreSaved=false
+        music.open(charts[selected].audio); music.setRate(activeRate)
+        play=Some(Play(rateChart(charts[selected],activeRate))); screen=1; now = -2000; menuOpen=false; menuDrag = -1; rateEditing=false
+        liveRanking=if (activeRate == 100) { Some(LiveRanking(localScores.forChart(charts[selected].scoreKey))) } else { None }
+        rankedRun = !autoplay && activeRate == 100; completionHandled=false; scoreSaved=false
         rankingHintStart=ticks
         leadStart=ticks; endedAt = -1; skipError=""; lastClickChart = -1
     }
@@ -99,8 +130,8 @@ class App {
             try {
                 // Play first: MIX_PlayTrack would otherwise reset a seek on a stopped track.
                 if (!music.started) { music.play() }
-                music.seek(target)
-                let position=music.position()
+                music.seek(rateSource(target,activeRate))
+                let position=rateTime(music.position(),activeRate)
                 if (position >= 0) { timeline.reset(position,PerformanceClock.ticksNanoseconds()); now=position+offset }
                 skipError=""
             } catch (ex: Exception) { skipError="无法跳过此前奏"; println(ex.message) }
@@ -137,7 +168,8 @@ class App {
     }
     func preview(async!: Bool=false): Unit {
         if (screen != 0 || charts.isEmpty() || calibration.isSome()) { return }
-        let chart=charts[selected]; let song=chart.artist+"\n"+chart.title
+        if (rows.isEmpty()) { music.discardPreview(); return }
+        let chart=charts[selected]; let song=previewIdentity(chart)
         if (previewSong == song) { music.discardPreview(); return }
         try {
             if (async) { if (!music.preparePreview(chart.audio)) { return } }
@@ -145,7 +177,7 @@ class App {
             music.play(loop: true); previewSong=song
         } catch (ex: Exception) { previewSong=song; message=ex.message; println("Preview: ${ex.message}") }
     }
-    func back(): Unit { closeCalibration(this,resume: false); previewSong=""; music.stop(); screen=0; play=None; liveRanking=None; menuOpen=false; menuDrag = -1 }
+    func back(): Unit { setSearchHover(this,false); searchFocused=false; searchComposition=""; closeCalibration(this,resume: false); previewSong=""; music.stop(); music.setRate(100); activeRate=100; screen=0; play=None; liveRanking=None; menuOpen=false; menuDrag = -1 }
     func finish(p: Play): Unit {
         if (completionHandled) { return }
         completionHandled=true; scoreSaved=false
@@ -171,12 +203,13 @@ class App {
             now=ticks-leadStart-2000
             if (now >= 0) {
                 music.play()
-                let position=max(0,music.position())
+                let position=rateTime(max(0,music.position()),activeRate)
                 timeline.reset(position,PerformanceClock.ticksNanoseconds()); now=position+offset
             }
         } else {
             let pos=music.position()
-            if (pos >= 0 && music.playing()) { now=timeline.sample(pos,PerformanceClock.ticksNanoseconds())+offset }
+            let elapsed=rateTime(max(0,pos),activeRate)
+            if (pos >= 0 && music.playing()) { now=timeline.sample(elapsed,PerformanceClock.ticksNanoseconds())+offset }
             else {
                 if (endedAt < 0) { endedAt=ticks; endPosition=now }
                 now=endPosition+ticks-endedAt
@@ -198,16 +231,19 @@ func handle(a: App, w: SdlWindow, event: UiEvent): Bool {
     let ticks=Int64(w.ticks())
     match (event) {
         case UiEvent.Quit | UiEvent.WindowCloseRequested => return false
-        case UiEvent.WindowFocusLost => if (let Some(g) <- a.calibration) { g.stop() }; a.pause(ticks); return true
+        case UiEvent.WindowFocusLost => setSearchHover(a,false); a.searchFocused=false; a.searchComposition=""; a.brandHover=false; if (let Some(g) <- a.calibration) { g.stop() }; a.pause(ticks); return true
         case _ => ()
     }
     if (a.menuOpen) { return handleMenu(a,w,event) }
+    if (a.screen == 0 && handleLibrarySearch(a,w,event)) { return true }
     match (event) {
         case UiEvent.Quit | UiEvent.WindowCloseRequested => return false
         case UiEvent.WindowFocusLost => a.pause(ticks)
         case UiEvent.DropFile(path, _, _) => if (a.screen == 0) { a.importPath(path) }
         case UiEvent.KeyUp(key) => if (a.screen == 1 && !a.autoplay) { if (let Some(p) <- a.play) { p.release(laneOf(a,p,key),a.now) } }
-        case UiEvent.MouseMove(x,y) => if (a.screen == 0) { a.libraryHover=libraryHit(a,x,y) }
+        case UiEvent.MouseMove(x,y) =>
+            a.brandHover=a.screen == 0 && inRect(x,y,libraryMenuRect())
+            if (a.screen == 0) { a.libraryHover=libraryHit(a,x,y) }
         case UiEvent.MouseWheel(_, y, x, pointerY) =>
             if (a.screen == 0 && !a.charts.isEmpty()) {
                 if (inRect(x,pointerY,localScoreRect())) {
@@ -306,8 +342,11 @@ main(args: Array<String>): Int64 {
                     if (args.size > 0 && args[0] == "--benchmark") { benchmark(a,w,art,args); return 0 }
                     if (args.size > 0 && args[0] == "--readme-capture") { captureReadmeShowcase(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--readme-media") { captureReadmeMedia(a,w,art); return 0 }
+                    if (args.size > 0 && args[0] == "--readme-practice") { capturePracticeMedia(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--ui-check") { verifyUiLogic(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--calibration-check") { verifyCalibration(a,w); return 0 }
+                    if (args.size > 0 && args[0] == "--rate-check") { verifyRate(a,w); return 0 }
+                    if (args.size > 0 && args[0] == "--rate-benchmark") { benchmarkRate(a,w,art,args); return 0 }
                     if (args.size > 0 && args[0] == "--score-check") { verifyLocalScoreboard(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--scroll-check") { scrollCheck(a,w,art,args); return 0 }
                     if (capture) { screenshots(a,w,art); return 0 }
@@ -330,7 +369,7 @@ main(args: Array<String>): Int64 {
                         w.renderer.present(); frames.finish(a,frameStart)
                     }
                     saveSettings(a)
-                } finally { closeCalibration(a,resume: false) }
+                } finally { closeCalibration(a,resume: false); closeSearchCursors(a) }
             }
         }
         return 0

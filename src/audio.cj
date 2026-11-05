@@ -22,6 +22,7 @@ foreign {
     func MIX_TrackMSToFrames(track: CPointer<Unit>,ms: Int64): Int64
     func MIX_GetTrackPlaybackPosition(track: CPointer<Unit>): Int64
     func MIX_TrackFramesToMS(track: CPointer<Unit>, frames: Int64): Int64
+    func MIX_SetTrackFrequencyRatio(track: CPointer<Unit>,ratio: Float32): Bool
     func MIX_SetTrackGain(track: CPointer<Unit>, gain: Float32): Bool
     func MIX_TrackPlaying(track: CPointer<Unit>): Bool
 }
@@ -57,6 +58,7 @@ class Music <: Resource {
                     audio=loaded
                     require(unsafe { MIX_SetTrackAudio(track,audio) },"Cannot attach audio")
                     let _=unsafe { MIX_SetTrackGain(track,volume) }
+                    setRate(100)
                     return true
                 }
                 if (loaded.isNotNull()) { unsafe { MIX_DestroyAudio(loaded) } }
@@ -94,7 +96,7 @@ class Music <: Resource {
         try (name=c.asResource()) { audio=unsafe { MIX_LoadAudio(mixer,name.value,predecode) } }
         require(audio.isNotNull(),"Cannot decode audio: " + path)
         require(unsafe { MIX_SetTrackAudio(track,audio) }, "Cannot attach audio")
-        let _=unsafe { MIX_SetTrackGain(track,volume) }
+        let _=unsafe { MIX_SetTrackGain(track,volume) }; setRate(100)
     }
     func play(loop!: Bool=false): Unit {
         let props=if (loop) { unsafe { SDL_CreateProperties() } } else { UInt32(0) }
@@ -119,6 +121,7 @@ class Music <: Resource {
         volume=max(Float32(0.0),min(Float32(1.0),value))
         let _=unsafe { MIX_SetTrackGain(track,volume) }
     }
+    func setRate(rate: Int64): Unit { require(rate >= 50 && rate <= 200 && unsafe { MIX_SetTrackFrequencyRatio(track,Float32(rate)/100.0) },"Cannot set playback rate") }
     func position(): Int64 { unsafe { MIX_TrackFramesToMS(track,MIX_GetTrackPlaybackPosition(track)) } }
     func playing(): Bool { unsafe { MIX_TrackPlaying(track) } }
     public func isClosed(): Bool { closed }
