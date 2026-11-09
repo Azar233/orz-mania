@@ -153,6 +153,7 @@ class Play {
     var score: Int64 = 0
     let counts = Array<Int64>(6, repeat: 0)
     let down = Array<Bool>(9, repeat: false)
+    let hitAt=Array<Int64>(9,repeat: -9999)
     var judge = "READY"
     var judgeAt: Int64 = -9999
     var error: Int64 = 0
@@ -197,6 +198,7 @@ class Play {
             // Re-grabbing a broken hold does not recover its head precision.
             if (n.state == 1) { return }
             error=now-n.time; n.headError=error; offsets.add(error)
+            if (grade(error) < 5) { hitAt[lane]=now }
             if (offsets.size > 40) { offsets.remove(at: 0) }
             if (n.end > n.time) { n.state=1; n.broken=grade(error) == 5 }
             else { n.state=2; award(grade(error),now) }
@@ -226,7 +228,7 @@ class Play {
             if (n.state == 2) { continue }
             if (autoplay && now >= n.time) {
                 if (n.state == 0) {
-                    keyOverlay.pulse(n.lane,n.time,max(n.time+65,n.end))
+                    keyOverlay.pulse(n.lane,n.time,max(n.time+65,n.end)); hitAt[n.lane]=n.time
                     n.headError=0; n.broken=false; n.state=1; down[n.lane]=n.end > n.time
                 }
                 if (now >= n.end) { n.state=2; award(0,now); down[n.lane]=false }

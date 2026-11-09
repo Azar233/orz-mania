@@ -97,6 +97,38 @@ func capturePracticeMedia(a: App,w: SdlWindow,art: Art): Unit {
     a.back(); require(art.errors == 0,"Practice media has missing assets")
     println("PASS README practice media / source-time excerpts / native runtime rates / no settings saved")
 }
+// Compare the same pre-sped chart without applying a second runtime rate.
+func captureNoteSkinsMedia(a: App,w: SdlWindow,art: Art): Unit {
+    w.setSize(960,540); w.delay(100)
+    while (let Some(_) <- w.pollEvent()) {}
+    a.english=false; a.framePreset=5; a.vsync=false; a.showFPS=false; a.backgroundOpacity=30
+    a.visualOffset=0; a.offset=0; a.speed=1.5; a.showRanking=false; a.keymaps[3]=bindings(4)
+    a.back(); filterLibrary(a,"")
+    var target: Int64 = -1
+    for (i in 0..a.charts.size) {
+        let c=a.charts[i]
+        if (c.version == "NB4 1.4x" && c.audio.endsWith("Cyber Induction 140.mp3")) { target=i; break }
+    }
+    require(target >= 0,"Import Cyber Inductance / NB4 1.4x for the skin comparison")
+    let names=["skin-circle","skin-diamond","skin-bar","skin-arrows"]
+    for (skin in 0..4) {
+        a.back(); a.selected=target; a.rate=100; a.noteSkin=skin; a.autoplay=true
+        prepareNoteSkin(a,art)
+        a.start(Int64(w.ticks())); let p=a.play.getOrThrow()
+        a.now=0; draw(a,w.renderer,art); w.renderer.present(); w.delay(80)
+        a.music.play()
+        let sourceBegin=a.music.position()
+        a.timeline.reset(sourceBegin,PerformanceClock.ticksNanoseconds()); a.now=sourceBegin
+        readmeClip(a,w,art,names[skin],false,durationMs: 15000)
+        require(a.activeRate == 100 && p.judged > 10 && p.counts[5] == 0,"Skin excerpt must use actual original-rate autoplay")
+        println("SKIN ${names[skin]}: chart=${p.chart.title} / ${p.chart.version}, runtime=1.00x, source=${sourceBegin}..${a.music.position()} ms, judged=${p.judged}, misses=${p.counts[5]}")
+    }
+    a.pause(Int64(w.ticks())); draw(a,w.renderer,art); readmeFrame(w,"artifacts/readme-media/pause.bmp")
+    a.back(); a.menuOpen=true; a.autoplay=false; a.noteSkin=0
+    a.menuPage=0; a.menuFocus=0; draw(a,w.renderer,art); readmeFrame(w,"artifacts/readme-media/menu-0.bmp")
+    require(art.errors == 0,"Skin media has missing assets")
+    println("PASS README four skins / same chart / first 15 seconds / no settings saved")
+}
 func captureReadmeMedia(a: App,w: SdlWindow,art: Art): Unit {
     if (!exists("artifacts/readme-media")) { Directory.create("artifacts/readme-media",recursive: true) }
     w.setSize(960,540); w.delay(100)

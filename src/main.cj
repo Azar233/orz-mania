@@ -44,6 +44,7 @@ class App {
     var customFPS: Int64=240
     var vsync=false
     var showFPS=false
+    var noteSkin: Int64=0
     var backgroundOpacity: Int64=30
     var english=false
     var displayFresh=true
@@ -295,8 +296,7 @@ func handle(a: App, w: SdlWindow, event: UiEvent): Bool {
                 case Key.Escape => openMenu(a,ticks)
                 case Key.Tab => if (a.screen == 1) { a.showRanking = !a.showRanking }
                 case Key.Enter =>
-                    if (a.screen == 2) { a.resume(ticks) }
-                    else if (a.screen == 0 && !a.rows.isEmpty() && a.rows[a.libraryRow].chart < 0) { toggleSongDrawer(a,a.libraryRow) }
+                    if (a.screen == 0 && !a.rows.isEmpty() && a.rows[a.libraryRow].chart < 0) { toggleSongDrawer(a,a.libraryRow) }
                     else if (a.screen == 0 || a.screen == 3) { a.start(ticks) }
                 case Key.Letter(82) => if (a.screen != 0) { a.start(ticks) } else { a.importPath("Songs") }
                 case Key.Up => if (a.screen == 0) { selectLibraryRow(a,a.libraryRow-1) }
@@ -343,6 +343,7 @@ main(args: Array<String>): Int64 {
                     if (args.size > 0 && args[0] == "--readme-capture") { captureReadmeShowcase(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--readme-media") { captureReadmeMedia(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--readme-practice") { capturePracticeMedia(a,w,art); return 0 }
+                    if (args.size > 0 && args[0] == "--readme-skins") { captureNoteSkinsMedia(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--ui-check") { verifyUiLogic(a,w,art); return 0 }
                     if (args.size > 0 && args[0] == "--calibration-check") { verifyCalibration(a,w); return 0 }
                     if (args.size > 0 && args[0] == "--rate-check") { verifyRate(a,w); return 0 }

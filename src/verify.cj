@@ -14,6 +14,7 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
     let originalPreset=a.framePreset; let originalCustom=a.customFPS
     let esc=UiEvent.KeyDown(Key.Escape,false)
     try {
+        verifyNoteSkins(a,w,art)
         verifyLibraryTitle(w.renderer)
         verifyBackgroundOpacity(a,w)
         verifySongGrouping(a)
@@ -111,15 +112,30 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         a.keymaps[3]=[90,88,74,75]
         let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,reset.x+reset.w/2.0,reset.y+reset.h/2.0))
         require(bindingText(a,4) == "D F J K" && a.keymaps[1][0] == otherKey,"Header reset restores only the selected key count")
-        a.start(Int64(w.ticks())); let _=handle(a,w,esc)
+        a.start(Int64(w.ticks())); a.now = -1234; let _=handle(a,w,esc)
         draw(a,w.renderer,art)
         let frozen=a.now; let english=a.english
         let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,900.0,514.0))
         require(a.screen == 2 && a.now == frozen && a.english == english,"Pause isolates settings and gameplay")
-        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,640.0,312.0))
+        let _=handle(a,w,esc)
+        require(a.screen == 2 && a.now == frozen,"Escape keeps gameplay paused")
+        closeMenu(a); require(a.screen == 2 && a.menuOpen,"Generic menu close cannot bypass Continue")
+        for (path in PAUSE_IMAGES) { require(art.texture(path).isSome(),"All three original pause button images exist") }
+        let beforeContinue=a.play.getOrThrow()
+        let continueRect=pauseActionRect(0); let retryRect=pauseActionRect(1); let quitRect=pauseActionRect(2)
+        require(continueRect.y+continueRect.h < retryRect.y && retryRect.y+retryRect.h < quitRect.y && quitRect.y+quitRect.h < 720.0,"Pause actions fit without overlapping")
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,continueRect.x+continueRect.w/2.0,continueRect.y+continueRect.h/2.0))
+        require(a.screen == 1 && !a.menuOpen && a.play.getOrThrow().chart.path == beforeContinue.chart.path && a.play.getOrThrow().judged == beforeContinue.judged && a.now == frozen,"Skin Continue resumes the same run at its paused position")
+        let _=handle(a,w,esc)
+        let _=handle(a,w,UiEvent.KeyDown(Key.Enter,false))
+        require(a.screen == 1,"Enter activates the focused Continue action")
+        let _=handle(a,w,esc)
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,retryRect.x+retryRect.w/2.0,retryRect.y+retryRect.h/2.0))
         require(a.screen == 1 && !a.menuOpen && a.now == -2000,"Skin Retry resets play")
         let _=handle(a,w,esc)
-        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,640.0,478.0))
+        let _=handle(a,w,UiEvent.KeyDown(Key.Down,false)); require(a.menuFocus == 1,"Pause navigation selects Retry")
+        let _=handle(a,w,UiEvent.KeyDown(Key.Down,false)); require(a.menuFocus == 2,"Pause navigation selects Quit")
+        let _=handle(a,w,UiEvent.MouseDown(MouseButton.Left,quitRect.x+quitRect.w/2.0,quitRect.y+quitRect.h/2.0))
         require(a.screen == 0 && !a.menuOpen,"Skin Quit returns to library")
         a.screen=3
         let _=handle(a,w,esc)
@@ -148,7 +164,7 @@ func verifyUiLogic(a: App,w: SdlWindow,art: Art): Unit {
         require(slow.g > slow.r && fast.r > fast.g,"Slow rate is green and fast rate is red")
         require(rateBadgeRect(false).y == 116.0 && rateBadgeRect(true).y == 116.0+55.0+10.0,"Rate badge follows AUTO without overlapping")
         require(art.errors == 0,"UI resources load without errors")
-        println("PASS UI logic: compact buttons / language mouse and keyboard / persistence / legacy fallback / unchanged bindings / resize mapping / binding capture / pause retry and quit")
+        println("PASS UI logic: compact buttons / language mouse and keyboard / persistence / legacy fallback / unchanged bindings / resize mapping / binding capture / pause continue retry and quit")
     } finally {
         a.back(); a.menuOpen=false; a.bindingCapture = -1
         File.writeTo("settings.cfg",saved); loadSettings(a)

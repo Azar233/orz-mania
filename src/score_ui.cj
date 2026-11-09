@@ -36,9 +36,8 @@ func drawLocalScores(a: App,r: Renderer): Unit {
     }
     r.popClip()
 }
-func liveScoreRect(keys: Int64,rows: Int64): Rect {
-    let laneWidth=min(Float32(696.0),Float32(keys)*104.0)
-    Rect(16.0,124.0,min(Float32(250.0),535.0-laneWidth/2.0-30.0),24.0+Float32(rows)*38.0)
+func liveScoreRect(keys: Int64,rows: Int64,skin!: Int64=0): Rect {
+    Rect(16.0,124.0,min(Float32(250.0),noteLayout(skin,keys).left-30.0),24.0+Float32(rows)*38.0)
 }
 func rankingHintAlpha(elapsed: Int64): Int64 {
     if (elapsed <= 1000) { return 175 }
@@ -49,7 +48,7 @@ func drawLiveScores(a: App,p: Play,r: Renderer): Unit {
     if (!a.showRanking) { return }
     if (let Some(view) <- a.liveRanking) {
         view.update(p)
-        let rect=liveScoreRect(p.chart.keys,view.visible.size)
+        let rect=liveScoreRect(p.chart.keys,view.visible.size,skin: a.noteSkin)
         r.fill(rect,Color.rgba(12,10,18,115))
         text(r,tr(a,"本地排行"),rect.x+7.0,rect.y+4.0,12.0,color: MUTED)
         let hint=rankingHintAlpha(a.uiTick-a.rankingHintStart)

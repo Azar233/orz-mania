@@ -59,6 +59,10 @@
 !/docs/media/calibration.png
 !/docs/media/practice-slow.gif
 !/docs/media/practice-fast.gif
+!/docs/media/skin-circle.gif
+!/docs/media/skin-diamond.gif
+!/docs/media/skin-bar.gif
+!/docs/media/skin-arrows.gif
 
 # Keep only the skin image families used by this game, plus skin.ini provenance.
 /assets/skin/*.png
@@ -70,6 +74,8 @@
 !/assets/skin/ranking-*.png
 /assets/skin/mania/*
 !/assets/skin/mania/orbs/
+!/assets/skin/mania/diamonds/
+!/assets/skin/mania/bars/
 !/assets/skin/mania/stage/
 /assets/skin/mania/orbs/*
 !/assets/skin/mania/orbs/note1.png
@@ -80,3 +86,41 @@
 /assets/skin/mania/stage/*
 !/assets/skin/mania/stage/stageleft.png
 /assets/skin/*.wav
+
+# In-project note variants used by the skin selector.
+!/assets/skin/mania/orbs/mania-noteL.png
+/assets/skin/mania/diamonds/*
+/assets/skin/mania/bars/*
+!/assets/skin/mania/diamonds/note1.png
+!/assets/skin/mania/diamonds/note2.png
+!/assets/skin/mania/diamonds/note3.png
+!/assets/skin/mania/diamonds/key.png
+!/assets/skin/mania/diamonds/key_down.png
+!/assets/skin/mania/diamonds/mania-noteL.png
+!/assets/skin/mania/bars/note1.png
+!/assets/skin/mania/bars/note2.png
+!/assets/skin/mania/bars/note3.png
+!/assets/skin/mania/bars/key.png
+!/assets/skin/mania/bars/key_down.png
+!/assets/skin/mania/bars/mania-noteL.png
+
+!/assets/skin/pause-continue.png
+!/assets/skin/mania/arrows/
+/assets/skin/mania/arrows/*
+!/assets/skin/mania/arrows/left.png
+!/assets/skin/mania/arrows/left-h.png
+!/assets/skin/mania/arrows/k_left.png
+!/assets/skin/mania/arrows/kd_left.png
+!/assets/skin/mania/arrows/down.png
+!/assets/skin/mania/arrows/down-h.png
+!/assets/skin/mania/arrows/k_down.png
+!/assets/skin/mania/arrows/kd_down.png
+!/assets/skin/mania/arrows/up.png
+!/assets/skin/mania/arrows/up-h.png
+!/assets/skin/mania/arrows/k_up.png
+!/assets/skin/mania/arrows/kd_up.png
+!/assets/skin/mania/arrows/right.png
+!/assets/skin/mania/arrows/right-h.png
+!/assets/skin/mania/arrows/k_right.png
+!/assets/skin/mania/arrows/kd_right.png
+!/assets/skin/mania/arrows/mania-noteL.png

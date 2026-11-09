@@ -10,8 +10,6 @@ let PINK=Color.rgb(255,173,201)
 let WHITE=Color.rgb(249,240,246)
 let MUTED=Color.rgb(155,144,166)
 let PANEL=Color.rgb(28,24,38)
-let NOTE_IMAGES=["assets/skin/mania/orbs/note1.png","assets/skin/mania/orbs/note2.png","assets/skin/mania/orbs/note3.png"]
-let KEY_IMAGES=["assets/skin/mania/orbs/key.png","assets/skin/mania/orbs/key_down.png"]
 let SCORE_IMAGES=Array<String>(13,{i => "assets/skin/score-${if (i < 10) { i.toString() } else if (i == 10) { "dot" } else if (i == 11) { "percent" } else { "x" }}@2x.png"})
 let COMBO_IMAGES=Array<String>(10,{i => "assets/skin/combo-${i}@2x.png"})
 let JUDGE_IMAGES=["assets/skin/mania-hit300g.png","assets/skin/mania-hit300.png","assets/skin/mania-hit200.png","assets/skin/mania-hit100.png","assets/skin/mania-hit50.png","assets/skin/mania-hit0.png"]
@@ -36,6 +34,7 @@ class CoverDecoded {
 }
 class Art <: Resource {
     let r: Renderer
+    var noteSkinReady: Int64 = -1
     let textures=HashMap<String,Texture>()
     var closed=false
     var errors: Int64=0
@@ -266,6 +265,7 @@ func autoBadge(a: App,r: Renderer,x: Float32,y: Float32): Unit {
     drawModBadge(r,Rect(x,y,62.0,55.0),Color.rgb(9,70,133),"AUTO",tr(a,"演示"))
 }
 func drawLibrary(a: App,r: Renderer,art: Art): Unit {
+    prepareNoteSkin(a,art)
     header(a,r,art)
     if (a.charts.isEmpty()) {
         text(r,tr(a,"曲库为空，请在菜单中导入歌曲"),62.0,250.0,24.0)
@@ -336,12 +336,13 @@ func drawSongProgress(r: Renderer,value: Float32,cx!: Float32=1084.0,cy!: Float3
 }
 func visualNoteTime(a: App): Int64 { a.now+a.visualOffset }
 func drawPlay(a: App,p: Play,r: Renderer,art: Art): Unit {
+    prepareNoteSkin(a,art)
     let visualNow=visualNoteTime(a)
     let c=p.chart
-    let width=min(Float32(696.0),Float32(c.keys)*104.0)
-    let centre: Float32=535.0; let left=centre-width/2.0; let lane=width/Float32(c.keys)
-    let hitY: Float32=667.0; let diameter=lane-6.0
-    r.fill(Rect(left,0.0,width,720.0),Color.rgba(0,0,0,192))
+    let layout=noteLayout(a.noteSkin,c.keys); let width=layout.width
+    let centre: Float32=535.0; let left=layout.left
+    let hitY=layout.hitY; let diameter=layout.maxColumn-6.0
+    r.fill(Rect(left,0.0,width,720.0),Color.rgba(0,0,0,if (a.noteSkin == 0) { 192 } else { 255 }))
     r.fill(Rect(left+width+8.0,300.0,6.0,420.0),Color.rgb(245,245,248))
     drawLiveScores(a,p,r)
     // Character art from the same stage texture as the reference skin.
@@ -356,12 +357,8 @@ func drawPlay(a: App,p: Play,r: Renderer,art: Art): Unit {
     if (a.autoplay) { autoBadge(a,r,1201.0,116.0) }
     drawRateBadge(a,r)
     for (i in 0..c.keys) {
-        let x=left+Float32(i)*lane
-        if (p.down[i]) {
-            r.fill(Rect(x+2.0,hitY-45.0,lane-4.0,95.0),Color.rgba(255,200,240,12))
-        }
-        art.image(KEY_IMAGES[if (p.down[i]) { 1 } else { 0 }],
-            Rect(x+3.0,hitY-diameter/2.0,diameter,diameter),source: Some(Rect(0.0,14.0,75.0,108.0)))
+        let lane=layout.widths[i]; let x=left+layout.offsets[i]
+        drawSkinnedReceptor(a,p,art,i,x,hitY,lane)
     }
     r.pushClip(Rect(left,0.0,width,720.0))
     for (i in p.cursor..c.notes.size) {
@@ -369,24 +366,8 @@ func drawPlay(a: App,p: Play,r: Renderer,art: Art): Unit {
         let y=hitY-Float32(n.time-visualNow)*a.speed
         if (y < -diameter) { break }
         if (n.state == 2) { continue }
-        let x=left+Float32(n.lane)*lane+3.0
         let cy: Float32=if (n.state == 1) { hitY } else { y }
-        if (n.end > n.time) {
-            let tail=hitY-Float32(n.end-visualNow)*a.speed
-            let top=max(-diameter,tail)
-            let bodyWidth=diameter*0.75
-            if (cy > top) {
-                let bodyX=x+(diameter-bodyWidth)/2.0
-                // One translucent capsule avoids alpha seams between the cap and body.
-                // Its lower end is covered by the note head drawn immediately below.
-                let radius=bodyWidth/2.0
-                r.fillRoundedRect(Rect(bodyX,top-radius,bodyWidth,cy-top+bodyWidth),radius,Color.rgba(210,210,215,185))
-            }
-        }
-        if (cy > -diameter && cy < 720.0+diameter) {
-            let style=if (n.end > n.time) { 2 } else if (n.lane == 0 || n.lane == c.keys-1) { 0 } else { 1 }
-            art.image(NOTE_IMAGES[style],Rect(x,cy-diameter/2.0,diameter,diameter),source: Some(Rect(6.0,6.0,138.0,138.0)))
-        }
+        drawSkinnedNote(a,n,art,left+layout.offsets[n.lane],cy,hitY-Float32(n.end-visualNow)*a.speed,layout.widths[n.lane],c.keys)
     }
     r.popClip()
     if (p.combo > 0) { skinNumber(art,p.combo.toString(),centre,224.0,69.0,combo: true,align: 1) }

@@ -42,8 +42,12 @@ func loadSettings(a: App): Unit {
             } catch (_: Exception) { preset=0; custom=240; sync=false; stats=false }
         }
         a.framePreset=preset; a.customFPS=custom; a.vsync=sync; a.showFPS=stats
-        a.english=false; a.visualOffset=0; a.rate=100; a.backgroundOpacity=30
+        a.english=false; a.visualOffset=0; a.rate=100; a.backgroundOpacity=30; a.noteSkin=0
         for (row in rows) {
+            if (row.trimAscii().startsWith("noteSkin=")) {
+                try { let value=Int64.parse(row.trimAscii().replace("noteSkin=","")); require(value >= 0 && value < 4,"Invalid note skin"); a.noteSkin=value }
+                catch (_: Exception) { a.noteSkin=0 }
+            }
             if (row.trimAscii().startsWith("backgroundOpacity=")) {
                 try { let value=Int64.parse(row.trimAscii().replace("backgroundOpacity=","")); require(value >= 0 && value <= 100,"Invalid background visibility"); a.backgroundOpacity=value }
                 catch (_: Exception) { a.backgroundOpacity=30 }
@@ -72,6 +76,7 @@ func saveSettings(a: App): Unit {
         value+="rate=${a.rate}\n"
         value+="visualOffset=${a.visualOffset}\n"
         value+="backgroundOpacity=${a.backgroundOpacity}\n"
+        value+="noteSkin=${a.noteSkin}\n"
         File.writeTo("settings.cfg",value.toArray())
     } catch (ex: Exception) { a.message="无法保存设置："+ex.message; println(a.message) }
 }
@@ -84,11 +89,11 @@ func openMenu(a: App,ticks: Int64): Unit {
     if (a.screen == 1) { a.pause(ticks) }
     else { a.menuOpen=true; a.menuPage=0; a.menuFocus=0 }
 }
-func closeMenu(a: App,ticks: Int64): Unit {
+func closeMenu(a: App): Unit {
+    if (a.screen == 2) { return }
     a.bindingCapture = -1; a.displayEditing=false; a.rateEditing=false
     saveSettings(a)
-    if (a.screen == 2) { a.resume(ticks) }
-    else { a.menuOpen=false; a.menuDrag = -1 }
+    a.menuOpen=false; a.menuDrag = -1
 }
 func inRect(x: Float32,y: Float32,left: Float32,top: Float32,w: Float32,h: Float32): Bool {
     x >= left && x < left+w && y >= top && y < top+h
@@ -113,6 +118,7 @@ func changeSetting(a: App,row: Int64,delta: Int64): Unit {
         case 3 => if (a.screen == 0) { a.autoplay = !a.autoplay }
         case 4 => a.english = !a.english
         case 6 => changeRate(a,delta)
+        case 7 => a.noteSkin=(a.noteSkin+delta%4+4)%4
         case _ => ()
     }
 }
@@ -134,30 +140,32 @@ func libraryAction(a: App,w: SdlWindow,action: Int64): Unit {
         case _ => a.importPath("Songs")
     }
 }
-func pauseActionRect(retry: Bool): Rect { Rect(441.0,if (retry) { 250.0 } else { 420.0 },398.0,116.0) }
+let PAUSE_IMAGES=["assets/skin/pause-continue.png","assets/skin/pause-retry.png","assets/skin/pause-back.png"]
+func pauseActionRect(action: Int64): Rect { Rect(441.0,180.0+Float32(action)*150.0,398.0,116.0) }
+func activatePauseAction(a: App,action: Int64,ticks: Int64): Unit {
+    match (action) { case 0 => a.resume(ticks) case 1 => a.start(ticks) case 2 => a.back() case _ => () }
+}
 func handlePause(a: App,w: SdlWindow,event: UiEvent): Bool {
     match (event) {
         case UiEvent.KeyDown(key,repeat) =>
             if (repeat) { return true }
             match (key) {
-                case Key.Escape => closeMenu(a,Int64(w.ticks()))
-                case Key.Up => a.menuFocus=0
-                case Key.Down => a.menuFocus=1
-                case Key.Enter => if (a.menuFocus == 0) { a.start(Int64(w.ticks())) } else { a.back() }
+                case Key.Up => a.menuFocus=max(0,a.menuFocus-1)
+                case Key.Down => a.menuFocus=min(2,a.menuFocus+1)
+                case Key.Enter => activatePauseAction(a,a.menuFocus,Int64(w.ticks()))
                 case Key.Letter(82) => a.start(Int64(w.ticks()))
                 case Key.Letter(81) => a.back()
                 case _ => ()
             }
         case UiEvent.MouseMove(x,y) =>
-            if (inRect(x,y,pauseActionRect(true))) { a.menuFocus=0 }
-            else if (inRect(x,y,pauseActionRect(false))) { a.menuFocus=1 }
+            for (i in 0..3) { if (inRect(x,y,pauseActionRect(i))) { a.menuFocus=i; break } }
         case UiEvent.MouseDown(MouseButton.Left,x,y) =>
-            if (inRect(x,y,pauseActionRect(true))) { a.start(Int64(w.ticks())) }
-            else if (inRect(x,y,pauseActionRect(false))) { a.back() }
+            for (i in 0..3) { if (inRect(x,y,pauseActionRect(i))) { activatePauseAction(a,i,Int64(w.ticks())); break } }
         case _ => ()
     }
     true
 }
+
 func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
     if (a.screen == 2) { return handlePause(a,w,event) }
     if (a.calibration.isSome()) { return handleCalibration(a,event) }
@@ -170,7 +178,6 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
             case _ => ()
         }
     }
-    let ticks=Int64(w.ticks())
     match (event) {
         case UiEvent.MouseUp(MouseButton.Left,_,_) => a.menuDrag = -1
         case UiEvent.MouseMove(x,_) => if (a.menuDrag >= 0) { dragSetting(a,x) }
@@ -178,7 +185,7 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
         case UiEvent.KeyDown(key,repeat) =>
             if (repeat) { return true }
             match (key) {
-                case Key.Escape => closeMenu(a,ticks)
+                case Key.Escape => closeMenu(a)
                 case Key.Tab => a.menuPage=(a.menuPage+1)%5; a.menuFocus=0; a.menuDrag = -1; a.bindingCapture = -1
                 case Key.Up => if (a.menuPage == 0) { moveSettingsFocus(a,-1) } else { a.menuFocus=max(0,a.menuFocus-1) }
                 case Key.Down => if (a.menuPage == 0) { moveSettingsFocus(a,1) } else { a.menuFocus=min(if (a.menuPage == 3) { a.bindingKeys-1 } else if (a.menuPage == 2) { 2 } else if (a.menuPage == 4) { 4 } else { 3 },a.menuFocus+1) }
@@ -194,7 +201,7 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
                     else if (a.menuPage == 3) { a.bindingCapture=min(a.bindingKeys-1,a.menuFocus) }
                     else if (a.menuPage == 2) { libraryAction(a,w,a.menuFocus) }
                     else if (a.menuPage == 0 && a.menuFocus >= 3) { changeSetting(a,a.menuFocus,1) }
-                    else { closeMenu(a,ticks) }
+                    else { closeMenu(a) }
                 case _ => ()
             }
         case UiEvent.MouseDown(MouseButton.Left,x,y) =>
@@ -203,7 +210,7 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
                     a.menuPage=i; a.menuFocus=0; a.menuDrag = -1; a.bindingCapture = -1; return true
                 }
             }
-            if (inRect(x,y,menuActionRect(false))) { closeMenu(a,ticks); return true }
+            if (inRect(x,y,menuActionRect(false))) { closeMenu(a); return true }
             if (inRect(x,y,menuActionRect(true))) { return false }
             if (a.screen != 0 && inRect(x,y,254.0,414.0,174.0,36.0)) {
                 a.back(); a.menuOpen=true; a.menuPage=2; return true
@@ -218,6 +225,7 @@ func handleMenu(a: App,w: SdlWindow,event: UiEvent): Bool {
                 for (increase in [false,true]) { if (inRect(x,y,backgroundStepRect(increase))) { a.menuFocus=4; changeDisplay(a,4,if (increase) { 1 } else { -1 }) } }
                 for (i in 0..2) { if (inRect(x,y,settingValueRect(410.0+Float32(i)*62.0))) { a.menuFocus=i+2; changeDisplay(a,i+2,1) } }
             } else if (a.menuPage == 0) {
+                if (inRect(x,y,noteSkinValueRect())) { a.menuFocus=7; changeSetting(a,7,1); return true }
                 if (inRect(x,y,calibrationEntryRect())) { a.menuFocus=5; openCalibration(a); return true }
                 if (inRect(x,y,rateValueRect())) { a.menuFocus=6; editRate(a); return true }
                 for (increase in [false,true]) { if (inRect(x,y,rateStepRect(increase))) { a.menuFocus=6; changeRate(a,if (increase) { 1 } else { -1 }); return true } }
@@ -262,8 +270,7 @@ func menuButton(a: App,r: Renderer,label: String,x: Float32,y: Float32,w: Float3
 }
 func drawMenu(a: App,r: Renderer,art: Art): Unit {
     if (a.screen == 2) {
-        art.image("assets/skin/pause-retry.png",pauseActionRect(true),alpha: if (a.menuFocus == 0) { 255 } else { 195 })
-        art.image("assets/skin/pause-back.png",pauseActionRect(false),alpha: if (a.menuFocus == 1) { 255 } else { 195 })
+        for (i in 0..3) { art.image(PAUSE_IMAGES[i],pauseActionRect(i),alpha: if (a.menuFocus == i) { 255 } else { 195 }) }
         return
     }
     if (a.calibration.isSome()) { drawCalibration(a,r); return }
@@ -300,11 +307,12 @@ func drawMenu(a: App,r: Renderer,art: Art): Unit {
         if (a.screen != 0) { text(r,tr(a,"在选曲界面切换"),650.0,434.0,12.0,color: MUTED) }
         settingValueButton(a,r,if (a.autoplay) { "ON" } else { "OFF" },426.0,active: a.autoplay)
         drawRateSetting(a,r)
+        drawNoteSkinSetting(a,r,art)
         centeredSettingLabel(a,r,"语言",498.0,a.menuFocus == 4)
         settingValueButton(a,r,if (a.english) { "English" } else { "中文" },498.0,active: a.menuFocus == 4)
     } else if (a.menuPage == 1) {
         let left=["选曲 / 开始","游玩","暂停 / 菜单","滚速与延迟","导入歌曲","菜单键盘操作"]
-        let right=["Enter 或双击谱面开始；歌曲卡片展开/收起。",if (a.english) { "4K: "+bindingText(a,4)+"; hold until the tail." } else { "4K："+bindingText(a,4)+"；长按保持到尾部。" },"Esc 暂停；前奏期间按 Enter 可跳过。","在设置中拖动滑块，或用 - / + 微调。","在曲库页导入文件夹、.osz 或 .osu。","Tab 换页；↑ ↓ 选择；← → 调整。"]
+        let right=["Enter 或双击谱面开始；歌曲卡片展开/收起。",if (a.english) { "4K: "+bindingText(a,4)+"; hold until the tail." } else { "4K："+bindingText(a,4)+"；长按保持到尾部。" },"Esc 暂停，Continue 继续；Enter 跳过前奏。","在设置中拖动滑块，或用 - / + 微调。","在曲库页导入文件夹、.osz 或 .osu。","Tab 换页；↑ ↓ 选择；← → 调整。"]
         for (i in 0..left.size) {
             let y=204.0+Float32(i)*48.0
             text(r,tr(a,left[i]),492.0,y,14.0,color: PINK)

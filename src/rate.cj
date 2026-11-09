@@ -34,7 +34,7 @@ func rateStepRect(increase: Bool): Rect { Rect(if (increase) { 988.0 } else { 82
 func changeRate(a: App,delta: Int64): Unit { a.rate=max(50,min(200,a.rate+delta*5)) }
 func editRate(a: App): Unit { a.rateEditing=true; a.rateFresh=true; a.rateInput=rateText(a.rate).replace("×",""); a.rateMessage="" }
 func moveSettingsFocus(a: App,direction: Int64): Unit {
-    let order: Array<Int64>=[0,1,5,2,3,6,4]
+    let order: Array<Int64>=[0,1,5,2,3,6,4,7]
     for (i in 0..order.size) { if (order[i] == a.menuFocus) { a.menuFocus=order[max(0,min(order.size-1,i+direction))]; return } }
 }
 func handleRateEntry(a: App,event: UiEvent): Bool {
